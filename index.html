@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1420,4 +1419,1052 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
     await db.collection('posts').add({
       authorId: 'bot',
       authorName: 'AceFire Bot',
-      ni
+      nick: 'arbitro',
+      avatar: '📅',
+      content: `📅 ¡NUEVA PICHANGA CONVOCADA!\n\n🏐 ${f.title}\n🗓 Fecha: ${f.date} | 🕗 Hora: ${f.time}${placeTxt(data) ? `\n📍 Cancha: ${placeTxt(data)}` : ''}${mapsOf(data) ? `\n🗺 Google Maps: ${mapsOf(data)}` : ''}${+f.fee ? `\n💰 Cuota: S/ ${f.fee} por persona\n💜 Yape a ${YAPE_NAME}: ${YAPE_NUM}` : ''}\n\n🔥 Anótate aquí: ${evLink(ref.id)}`,
+      badge: '📅 Convocatoria',
+      likes: [],
+      comments: [],
+      createdAt: Date.now()
+    });
+
+    setCreated({ ...data, id: ref.id }); setF(blank); setOpen(false);
+  };
+
+  const toggle = (ev) => {
+    db.collection('events').doc(ev.id).update({
+      going: (ev.going || []).includes(me.id) ? FV.arrayRemove(me.id) : FV.arrayUnion(me.id)
+    });
+  };
+
+  const setPaid = (ev, uid, v) => {
+    db.collection('events').doc(ev.id).update({
+      ['paid.' + uid]: v === null ? FV.delete() : v
+    });
+  };
+
+  const evPay = (ev) => {
+    const pays = ev.paid || {};
+    const pend = (ev.going || []).slice(0, ev.cap || 12).filter((id) => pays[id] !== 'ok').map((id) => ({ p: byId(id), st: pays[id] })).filter((x) => x.p);
+    if (!pend.length) return `✅ *${ev.title}*: ¡todos los convocados ya pagaron! Gracias 🔥`;
+    return `💸 *FALTA PAGAR* · ${ev.title} (${ev.date})\n\nCuota: S/ ${ev.fee}\n💜 Yape a ${YAPE_NAME}: ${YAPE_NUM}\n\nFaltan (${pend.length}):\n${pend.map((x) => `• ${x.p.nickname}${x.st === 'pending' ? ' ⏳ (avisó, por confirmar)' : ''}`).join('\n')}\n\nYapea y toca "Ya yapeé" en la web para avisar 👇\n${evLink(ev.id)}`;
+  };
+
+  const evList = (ev) => {
+    const cap = ev.cap || 12, g = ev.going || [];
+    const rows = Array.from({ length: cap }).map((_, i) => { const p = g[i] ? byId(g[i]) : null; return `${i + 1}. ${g[i] ? '🔥 ' + (p ? p.nickname : 'Jugador') : '▫️ libre'}`; });
+    const wait = g.slice(cap).map((id, i) => { const p = byId(id); return `${cap + i + 1}. ⏳ ${p ? p.nickname : 'Jugador'}`; });
+    return `🏐 *${ev.title}*\n🗓 ${ev.date} · 🕗 ${ev.time}\n\n📋 *LISTA (${Math.min(g.length, cap)}/${cap})*\n${rows.join('\n')}${wait.length ? `\n\n⏳ *Lista de espera*\n${wait.join('\n')}` : ''}\n\n🔥 Anótate aquí 👇\n${evLink(ev.id)}`;
+  };
+
+  const payYape = (ev) => {
+    const msg = `Hola ${YAPE_NAME} 👋 Soy ${me.nickname} (${me.name}). Ya yapeé S/ ${ev.fee} por la pichanga "${ev.title}" del ${ev.date}. ¿Me confirmas el pago? 🏐\nVer pichanga: ${evLink(ev.id)}`;
+    window.open('https://wa.me/' + YAPE_WA + '?text=' + encodeURIComponent(msg), '_blank');
+    if (pays_of(ev)[me.id] !== 'pending') setPaid(ev, me.id, 'pending');
+  };
+  const pays_of = (ev) => ev.paid || {};
+
+  const remove = (ev) => confirm('¿Eliminar esta convocatoria?') && db.collection('events').doc(ev.id).delete();
+
+  const renderEv = (ev, past) => {
+    const d = when(ev), g = ev.going || [], pays = ev.paid || {}, iGo = g.includes(me.id);
+    const canManage = isAdmin; // solo admins confirman pagos
+    const full = g.length >= ev.cap, ok = g.filter((id) => pays[id] === 'ok').length, mine = pays[me.id];
+
+    return (
+      <article key={ev.id} id={'ev-' + ev.id} className={card + ' !p-0 overflow-hidden enter ' + (past ? 'opacity-60 ' : '') + (focusId === ev.id ? 'ring-2 ring-orange-500' : '')}>
+        <div className="ev-hd p-4 flex items-center gap-4">
+          <div className="datebox text-center bg-slate-950 border border-orange-500/40 rounded-2xl px-3.5 py-2">
+            <div className="text-3xl leading-none">{d.getDate()}</div>
+            <div className="text-xs text-amber-400 font-bold">{MS[d.getMonth()]}</div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <b className="block truncate text-base text-slate-100">{ev.title}</b>
+            <p className="text-xs text-slate-400">🕗 {ev.time} · 📍 {placeTxt(ev) || (mapsOf(ev) ? 'Ver ubicación abajo' : 'Por definir')}</p>
+            <p className="text-xs font-bold text-amber-400 mt-0.5">{left(ev)}</p>
+          </div>
+          {canManage && (
+            <button title="Borrar" onClick={() => remove(ev)} className="text-slate-500 hover:text-rose-400 text-sm px-2">🗑️</button>
+          )}
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div>
+            <div className="flex justify-between text-xs mb-1.5">
+              <span className="flex items-center gap-2"><span><b>{Math.min(g.length, ev.cap)}</b>/{ev.cap} confirmados</span>
+                {!past && (ev.cap - g.length <= 0 ? <span className="af-chip af-chip-full">Llena</span> : ev.cap - g.length <= 3 ? <span className="af-chip af-chip-warn">¡Solo {ev.cap - g.length} {ev.cap - g.length === 1 ? 'cupo' : 'cupos'}!</span> : <span className="af-chip af-chip-ok">{ev.cap - g.length} cupos libres</span>)}</span>
+              {g.length > ev.cap && <span className="text-amber-400 font-bold">+{g.length - ev.cap} en lista de espera</span>}
+            </div>
+            <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden">
+              <div className="bar h-full rounded-full" style={{ width: Math.min(100, (g.length / ev.cap) * 100) + '%' }} />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-bold text-amber-400">📋 Lista de convocados</p>
+            <div className="grid sm:grid-cols-2 gap-x-3 gap-y-1.5">
+              {Array.from({ length: ev.cap || 12 }).map((_, i) => {
+                const id = g[i], p = id ? byId(id) : null, st = id ? pays[id] : null;
+                return id ? (
+                  <div key={i} onClick={() => p && onProfile && onProfile(p.id)} className="slot slot-on">
+                    <span className="slot-n">{i + 1}</span>
+                    <span>🔥</span>
+                    {p && <Av p={p} size="w-6 h-6" text="text-sm" />}
+                    <b className="truncate">{p ? p.nickname : 'Jugador'}</b>
+                    {ev.fee > 0 && <span className="ml-auto text-xs">{st === 'ok' ? '✅' : st === 'pending' ? '⏳' : ''}</span>}
+                  </div>
+                ) : (
+                  <div key={i} className="slot slot-off"><span className="slot-n">{i + 1}</span><span>▫️</span><span>libre</span></div>
+                );
+              })}
+            </div>
+            {g.length > (ev.cap || 12) && (
+              <div className="pt-1.5 space-y-1.5">
+                <p className="text-[11px] font-bold text-slate-400">⏳ Lista de espera</p>
+                <div className="grid sm:grid-cols-2 gap-x-3 gap-y-1.5">
+                  {g.slice(ev.cap || 12).map((id, i) => {
+                    const p = byId(id);
+                    return (
+                      <div key={id} onClick={() => p && onProfile && onProfile(p.id)} className="slot slot-wait cursor-pointer">
+                        <span className="slot-n">{(ev.cap || 12) + i + 1}</span>
+                        <span>⏳</span>
+                        {p && <Av p={p} size="w-6 h-6" text="text-sm" />}
+                        <b className="truncate">{p ? p.nickname : 'Jugador'}</b>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!past && (
+            <button onClick={() => toggle(ev)} className={iGo ? 'w-full py-2.5 rounded-xl text-sm font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition' : 'btn-fire fire-on w-full py-2.5 rounded-xl text-sm shadow transition'}>
+              {iGo ? 'No voy (salir de la lista)' : full ? 'Entrar a lista de espera' : '¡Me anoto! 🔥'}
+            </button>
+          )}
+
+          {mapsOf(ev) && (
+            <a href={mapsOf(ev)} target="_blank" rel="noreferrer" className="block text-center w-full py-2 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-400 text-xs font-bold hover:bg-blue-500/20 transition">📍 Abrir en Google Maps</a>
+          )}
+
+          {!past && isAdmin && g.length >= 2 && (
+            <button onClick={() => onTeams(ev.id)} className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-bold transition">⚖️ Armar equipos con los {Math.min(g.length, ev.cap)} convocados</button>
+          )}
+
+          {!past && (
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => waShare(evText(ev))} className="py-2 rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-emerald-300 text-xs font-bold hover:bg-emerald-500/20 transition">
+                Enviar al WhatsApp 💬
+              </button>
+              <button onClick={() => copy('l' + ev.id, evLink(ev.id))} className="py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition">
+                {cp === 'l' + ev.id ? '¡Link copiado! ✅' : '🔗 Copiar link'}
+              </button>
+            </div>
+          )}
+
+          {!past && isAdmin && (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 space-y-1.5">
+              <p className="text-[11px] font-bold text-amber-400">📢 Avisos al grupo (solo admins)</p>
+              <div className="grid gap-1.5">
+                <button onClick={() => waShare(evOpen(ev))} className="py-2 rounded-xl bg-emerald-600/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold hover:bg-emerald-600/25 transition">🔥 Ya está abierta la lista, anótense</button>
+                <button onClick={() => waShare(evList(ev))} className="py-2 rounded-xl bg-orange-500/15 border border-orange-500/40 text-orange-300 text-xs font-bold hover:bg-orange-500/25 transition">📋 Enviar la lista (1 a {ev.cap})</button>
+                <button onClick={() => waShare(evSpots(ev))} className="py-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-bold hover:bg-amber-500/25 transition">⚠️ Cupos limitados ({Math.max(0, ev.cap - g.length)} libres)</button>
+                {ev.fee > 0 && (
+                  <button onClick={() => waShare(evPay(ev))} className="py-2 rounded-xl bg-purple-500/15 border border-purple-500/40 text-purple-300 text-xs font-bold hover:bg-purple-500/25 transition">💸 Falta pagar ({g.slice(0, ev.cap).filter((id) => pays[id] !== 'ok').length})</button>
+                )}
+              </div>
+              <p className="text-[10px] text-slate-500">Se abre WhatsApp con el mensaje listo; solo elige el grupo y envía.</p>
+            </div>
+          )}
+
+          {ev.fee > 0 && (
+            <div className="border-t border-slate-800 pt-3 space-y-2">
+              <div className="flex justify-between text-sm">
+                <b>💰 Cuota: S/ {ev.fee}</b>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 bg-purple-500/10 border border-purple-500/30 rounded-xl p-2.5">
+                <div>
+                  <p className="text-[10px] text-slate-400">Yape a nombre de {YAPE_NAME}</p>
+                  <b className="num text-2xl text-purple-400">{YAPE_NUM}</b>
+                </div>
+                <button onClick={() => copy('y' + ev.id, YAPE_NUM.replace(/\s/g, ''))} className="px-3 py-1.5 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-bold">
+                  {cp === 'y' + ev.id ? '¡Copiado! ✅' : 'Copiar número'}
+                </button>
+              </div>
+
+              {iGo && (
+                mine === 'ok' ? (
+                  <p className="text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-2 font-bold text-center">✅ Tu pago de cancha está confirmado</p>
+                ) : mine === 'pending' ? (
+                  <div className="space-y-1.5">
+                    <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/30 rounded-xl p-2 font-bold text-center">⏳ Pago avisado. Un admin lo confirmará con el ✓.</p>
+                    <button onClick={() => payYape(ev)} className="w-full py-1.5 rounded-xl bg-slate-800 text-slate-300 text-[11px] font-bold">Reenviar aviso a {YAPE_NAME} por WhatsApp 💬</button>
+                  </div>
+                ) : (
+                  <button onClick={() => payYape(ev)} className="w-full py-2 rounded-xl border border-purple-500/60 bg-purple-500/10 text-purple-300 text-xs font-bold hover:bg-purple-500/20 transition">
+                    Ya yapeé · avisar a {YAPE_NAME} por WhatsApp 💬
+                  </button>
+                )
+              )}
+
+              <p className="text-xs text-slate-400">
+                Recaudado: <b className="text-emerald-400">S/ {ok * ev.fee}</b> de S/ {g.length * ev.fee}
+              </p>
+
+              {canManage && g.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-[11px] font-bold text-amber-400">Control de cobros (solo admins pueden poner el ✓):</p>
+                  {g.map((id) => {
+                    const p = byId(id), st = pays[id];
+                    if (!p) return null;
+                    return (
+                      <div key={id} className="flex items-center justify-between text-xs bg-slate-950 rounded-xl px-2.5 py-1.5 border border-slate-800">
+                        <span>{p.avatar} {p.nickname}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={st === 'ok' ? 'text-emerald-400 font-bold' : st === 'pending' ? 'text-amber-400 font-bold' : 'text-slate-500'}>
+                            {st === 'ok' ? 'Pagado' : st === 'pending' ? 'Avisó pago' : 'Debe'}
+                          </span>
+                          {st !== 'ok' ? (
+                            <button onClick={() => setPaid(ev, id, 'ok')} title="Aprobar pago" className="px-2 py-0.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold">✓</button>
+                          ) : (
+                            <button onClick={() => setPaid(ev, id, null)} title="Revertir pago" className="px-2 py-0.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white">↺</button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </article>
+    );
+  };
+
+  const all = events.filter((e) => e.date).sort((a, b) => when(a) - when(b));
+  const limit = Date.now() - 6 * 36e5;
+  const up = all.filter((e) => when(e) >= limit);
+  const past = all.filter((e) => when(e) < limit);
+
+  return (
+    <div className="space-y-4">
+      {isAdmin && (
+        <button onClick={() => setOpen(!open)} className="btn-fire w-full py-2.5 rounded-xl text-sm shadow">
+          {open ? 'Cerrar formulario' : '+ Nueva convocatoria de pichanga'}
+        </button>
+      )}
+
+      {created && (
+        <div className={card + ' border-emerald-500/40 space-y-2.5 enter'}>
+          <p className="text-sm font-bold text-emerald-400">✅ ¡Pichanga publicada! Ahora avisa al grupo</p>
+          <p className="text-[11px] text-slate-400">Al tocar el link, la gente entra directo a esta pichanga para anotarse.</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => waShare(evOpen(created))} className="flex-1 min-w-[160px] py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition">Avisar al grupo: lista abierta 💬</button>
+            <button onClick={() => copy('new', evLink(created.id))} className="flex-1 min-w-[140px] py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition">{cp === 'new' ? '¡Copiado! ✅' : '🔗 Copiar link'}</button>
+            <button onClick={() => setCreated(null)} className="px-3 py-2.5 rounded-xl bg-slate-800 text-slate-400 text-xs font-bold">Cerrar</button>
+          </div>
+        </div>
+      )}
+
+      {open && (
+        <form onSubmit={create} className={card + ' space-y-2.5 enter'}>
+          <p className="text-sm font-bold text-amber-400">Crear convocatoria</p>
+          <input required className={inp} placeholder="Título (ej. Pichanga Sábado por la tarde)" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+          <div className="grid grid-cols-2 gap-2">
+            <input required type="date" className={inp} value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />
+            <input type="time" className={inp} value={f.time} onChange={(e) => setF({ ...f, time: e.target.value })} />
+          </div>
+          <input className={inp} placeholder="Lugar (ej. Cancha Papú, Coliseo Berlín...)" value={f.place} onChange={(e) => setF({ ...f, place: e.target.value })} />
+          <input className={inp} placeholder="🗺 Link de Google Maps (pega el link de la cancha)" value={f.maps} onChange={(e) => setF({ ...f, maps: e.target.value })} />
+          <div className="grid grid-cols-2 gap-2">
+            <input type="number" min="0" step="0.5" className={inp} placeholder="Cuota por persona (S/)" value={f.fee} onChange={(e) => setF({ ...f, fee: e.target.value })} />
+            <input type="number" min="2" className={inp} placeholder="Cupos (ej. 12)" value={f.cap} onChange={(e) => setF({ ...f, cap: e.target.value })} />
+          </div>
+          <p className="text-[11px] text-slate-400">💜 El Yape de cobro es siempre el de {YAPE_NAME}: {YAPE_NUM}</p>
+          <button className="btn-fire w-full py-2.5 rounded-xl text-sm font-black shadow mt-1">Publicar Convocatoria</button>
+        </form>
+      )}
+
+      {up.length === 0 && !open && (
+        <p className="text-center text-sm text-slate-500 py-10">No hay pichangas convocadas por el momento. ¡Atentos al muro!</p>
+      )}
+
+      {up.map((e) => renderEv(e, false))}
+
+      {past.length > 0 && (
+        <div className="pt-2">
+          <p className="text-xs font-bold text-slate-500 mb-2">Partidos anteriores</p>
+          {past.filter((e, i) => i >= past.length - 3 || e.id === focusId).reverse().map((e) => renderEv(e, true))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== PANEL DE ADMINISTRADORES (EXCLUSIVO JUSTIN & YULISA) =====
+function AdminPanel({ me, players }) {
+  const [selectedPlayer, setSelectedPlayer] = useState(null);
+  const [msgPost, setMsgPost] = useState('');
+
+  const updateSkills = async () => {
+    if (!selectedPlayer) return;
+    await db.collection('players').doc(selectedPlayer.id).update({
+      skills: selectedPlayer.skills,
+      position: selectedPlayer.position
+    });
+    alert(`¡Habilidades de ${selectedPlayer.nickname} actualizadas con éxito!`);
+    setSelectedPlayer(null);
+  };
+
+  const toggleAdmin = async (p) => {
+    const msg = p.isAdmin ? `¿Quitar admin a ${p.nickname}?` : `¿Hacer admin a ${p.nickname}?`;
+    if (!confirm(msg)) return;
+    await db.collection('players').doc(p.id).update({ isAdmin: !p.isAdmin });
+  };
+
+  const publishOfficialNotice = async (e) => {
+    e.preventDefault();
+    if (!msgPost.trim()) return;
+    await db.collection('posts').add({
+      authorId: me.id,
+      authorName: me.name,
+      nick: me.nickname,
+      avatar: '🛡️',
+      content: msgPost.trim(),
+      badge: '⭐ Comunicado Admin',
+      likes: [],
+      comments: [],
+      createdAt: Date.now()
+    });
+    setMsgPost('');
+    alert('Comunicado oficial publicado en el muro.');
+  };
+
+  return (
+    <div className="space-y-4 enter">
+      <div className={card + ' border-amber-500/40 bg-gradient-to-r from-amber-500/10 to-orange-500/5'}>
+        <div className="flex items-center gap-2 text-amber-400 font-bold text-base">
+          <span>🛡️</span>
+          <span>Panel Oficial de Administradores</span>
+        </div>
+        <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+          Bienvenido, <b>{me.nickname}</b>. Como administradores de AceFire, aquí pueden calibrar el nivel de los chicos para que el algoritmo arme sextetos parejos y publicar avisos con prioridad.
+        </p>
+      </div>
+
+      {/* Publicar Comunicado Oficial */}
+      <form onSubmit={publishOfficialNotice} className={card + ' space-y-2.5'}>
+        <p className="text-xs font-bold text-amber-400">📢 Emitir Comunicado Oficial Fijado</p>
+        <textarea rows={2} className={inp + ' resize-none'} placeholder="Escribe el aviso importante para todo el grupo de vóley..." value={msgPost} onChange={(e) => setMsgPost(e.target.value)} />
+        <button disabled={!msgPost.trim()} className="btn-fire px-4 py-2 rounded-xl text-xs font-black disabled:opacity-40">Publicar como Admin</button>
+      </form>
+
+      {/* Editor de habilidades de los chicos */}
+      <div className={card + ' space-y-3'}>
+        <div className="flex justify-between items-center">
+          <p className="text-sm font-bold text-amber-400">Calibración Técnica de Jugadores ({players.length})</p>
+          <span className="text-[10px] text-slate-500">Ajusta notas para evitar desbalances</span>
+        </div>
+
+        <div className="divide-y divide-slate-800 max-h-96 overflow-y-auto">
+          {players.map((p) => (
+            <div key={p.id} className="py-2.5 flex justify-between items-center text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-lg">{p.avatar}</span>
+                <div>
+                  <b className="text-slate-200">{p.nickname}</b> <span className="text-slate-500">({p.name})</span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <Badge id={p.position} />
+                    <span className="text-amber-400 font-mono font-bold">⭐ {ovr(p.skills).toFixed(1)}</span>
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setSelectedPlayer(JSON.parse(JSON.stringify(p)))} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 rounded-xl font-bold transition">
+                Calibrar ⚙️
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Administradores */}
+      <div className={card + ' space-y-3'}>
+        <div>
+          <p className="text-sm font-bold text-amber-400">👥 Administradores</p>
+          <p className="text-[11px] text-slate-400">Quien se registre aparece aquí. Hazlo admin con un toque.</p>
+        </div>
+        <div className="divide-y divide-slate-800 max-h-72 overflow-y-auto">
+          {players.map((p) => {
+            const isOwnerP = ADMIN_EMAILS.includes((p.email || '').toLowerCase());
+            return (
+              <div key={p.id} className="py-2.5 flex justify-between items-center text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-lg">{p.avatar}</span>
+                  <div className="min-w-0">
+                    <b className="text-slate-200">{p.nickname}</b>
+                    <p className="text-[10px] text-slate-500 truncate">{p.email || p.name}</p>
+                  </div>
+                </div>
+                {isOwnerP ? (
+                  <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-1 rounded-lg">Dueño</span>
+                ) : (
+                  <button onClick={() => toggleAdmin(p)} className={p.isAdmin ? 'px-3 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 font-bold' : 'px-3 py-1.5 rounded-xl bg-emerald-600 text-white font-bold'}>
+                    {p.isAdmin ? 'Quitar admin' : 'Hacer admin'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Modal de calibración */}
+      {selectedPlayer && (
+        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 space-y-3 text-xs enter shadow-2xl">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+              <b className="text-sm text-amber-400">Ajustar notas de {selectedPlayer.nickname}</b>
+              <button onClick={() => setSelectedPlayer(null)} className="text-slate-400 hover:text-white text-base">✕</button>
+            </div>
+
+            <div>
+              <label className="block text-[11px] text-slate-400 mb-1">Cambiar Posición Táctica</label>
+              <select className={inp} value={selectedPlayer.position} onChange={(e) => setSelectedPlayer({ ...selectedPlayer, position: e.target.value })}>
+                {POS.map((pos) => <option key={pos.id} value={pos.id}>{pos.label}</option>)}
+              </select>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              {SK.map((k) => (
+                <div key={k} className="flex justify-between items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                  <span className="capitalize w-20 text-slate-400">{k}</span>
+                  <input type="range" min="1" max="5" value={selectedPlayer.skills?.[k] || 3} className="flex-1 accent-orange-500 cursor-pointer" onChange={(e) => setSelectedPlayer({
+                    ...selectedPlayer,
+                    skills: { ...selectedPlayer.skills, [k]: +e.target.value }
+                  })} />
+                  <b className="w-5 text-right text-amber-400 font-mono">{selectedPlayer.skills?.[k] || 3}</b>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button onClick={() => setSelectedPlayer(null)} className="w-1/2 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition">Cancelar</button>
+              <button onClick={updateSkills} className="btn-fire w-1/2 py-2 rounded-xl font-black shadow transition">Guardar cambios</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ===== REGISTRO DE PARTIDOS (MODAL DE RESULTADO) =====
+function MatchModal({ players, init, onClose }) {
+  const [side, setSide] = useState(() => {
+    const s = {};
+    (init.a || []).forEach((i) => (s[i] = 'A'));
+    (init.b || []).forEach((i) => (s[i] = 'B'));
+    return s;
+  });
+  const [sa, setSa] = useState(2);
+  const [sb, setSb] = useState(0);
+  const [mvp, setMvp] = useState('');
+
+  const cyc = (id) => {
+    const c = side[id];
+    const nx = { ...side };
+    if (!c) nx[id] = 'A';
+    else if (c === 'A') nx[id] = 'B';
+    else delete nx[id];
+    setSide(nx);
+  };
+
+  const A = Object.keys(side).filter((i) => side[i] === 'A');
+  const B = Object.keys(side).filter((i) => side[i] === 'B');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!A.length || !B.length) return alert('Debes marcar al menos un jugador en cada equipo.');
+    if (sa === sb) return alert('Los sets no pueden quedar empatados.');
+
+    const winA = sa > sb, W = winA ? A : B, L = winA ? B : A, ws = winA ? sa : sb;
+    const batch = db.batch();
+
+    W.forEach((id) => batch.update(db.collection('players').doc(id), {
+      matchesWon: FV.increment(1),
+      setsWon: FV.increment(ws)
+    }));
+    L.forEach((id) => batch.update(db.collection('players').doc(id), {
+      matchesLost: FV.increment(1)
+    }));
+    if (mvp) {
+      batch.update(db.collection('players').doc(mvp), { mvpCount: FV.increment(1) });
+    }
+
+    batch.set(db.collection('matches').doc(), {
+      teamA: A,
+      teamB: B,
+      scoreA: sa,
+      scoreB: sb,
+      mvp,
+      createdAt: Date.now()
+    });
+
+    const names = (ids) => ids.map((i) => players.find((p) => p.id === i)?.nickname || 'Jugador').join(', ');
+    const m = players.find((p) => p.id === mvp);
+
+    batch.set(db.collection('posts').doc(), {
+      authorId: 'bot',
+      authorName: 'AceFire Árbitro',
+      nick: 'arbitro',
+      avatar: '🏆',
+      content: `🏆 ¡RESULTADO OFICIAL REGISTRADO!\n\n🔥 Marcador: Equipo A (${sa}) - (${sb}) Equipo B\n\n🔵 Equipo A: ${names(A)}\n🔴 Equipo B: ${names(B)}${m ? `\n\n⭐ JUGADOR MVP: ${m.nickname} ${m.avatar}` : ''}`,
+      badge: '🔥 Resultado',
+      likes: [],
+      comments: [],
+      createdAt: Date.now()
+    });
+
+    await batch.commit();
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-3">
+      <form onSubmit={submit} className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-md max-h-[92vh] overflow-y-auto p-5 space-y-3 text-sm enter shadow-2xl">
+        <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+          <b className="text-base text-amber-400">Registrar Partido Oficial</b>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <p className="text-xs text-slate-400 leading-relaxed">
+          Toca a los jugadores para armar los bandos: <span className="text-blue-400 font-bold">1 toque = Equipo A</span>, <span className="text-rose-400 font-bold">2 toques = Equipo B</span>, 3 = Fuera.
+        </p>
+
+        <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
+          {players.map((p) => {
+            const sideCode = side[p.id];
+            return (
+              <button type="button" key={p.id} onClick={() => cyc(p.id)} className={`p-2 rounded-xl border text-left flex justify-between items-center transition ${sideCode === 'A' ? 'bg-blue-600/25 border-blue-500 text-blue-200' : sideCode === 'B' ? 'bg-rose-600/25 border-rose-500 text-rose-200' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
+                <span className="truncate">{p.avatar} {p.nickname}</span>
+                <b className="font-bold">{sideCode || '-'}</b>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 bg-slate-950 p-3 rounded-2xl border border-slate-800">
+          <label className="text-xs text-slate-400">Sets Equipo A
+            <input type="number" min="0" max="5" className={inp + ' mt-1 font-bold text-center'} value={sa} onChange={(e) => setSa(+e.target.value || 0)} />
+          </label>
+          <label className="text-xs text-slate-400">Sets Equipo B
+            <input type="number" min="0" max="5" className={inp + ' mt-1 font-bold text-center'} value={sb} onChange={(e) => setSb(+e.target.value || 0)} />
+          </label>
+        </div>
+
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Elegir MVP del partido</label>
+          <select className={inp} value={mvp} onChange={(e) => setMvp(e.target.value)}>
+            <option value="">⭐ Selecciona el mejor jugador (opcional)</option>
+            {players.map((p) => <option key={p.id} value={p.id}>{p.avatar} {p.nickname}</option>)}
+          </select>
+        </div>
+
+        <div className="flex gap-2 pt-2">
+          <button type="button" onClick={onClose} className="w-1/2 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition">Cancelar</button>
+          <button className="btn-fire w-1/2 py-2.5 rounded-xl font-black shadow transition">Guardar en Ranking</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ===== PERFIL (PÁGINA COMPLETA, CON ENLACE PROPIO) =====
+const hashId = () => { const m = location.hash.match(/^#\/p\/(.+)$/); return m ? decodeURIComponent(m[1]) : null; };
+
+function ProfilePage({ id, me, players, posts, isAdmin, onProfile, onClose, onMessage }) {
+  const p = players.find((x) => x.id === id);
+  const [busy, setBusy] = useState(false);
+  const [ed, setEd] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  if (!p) {
+    return (
+      <div className={card + ' text-center space-y-3 py-10'}>
+        <p className="text-sm text-slate-400">Este perfil no existe o ya no está en la comunidad.</p>
+        <button onClick={onClose} className="btn-fire px-4 py-2 rounded-xl text-sm">Volver</button>
+      </div>
+    );
+  }
+
+  const mine = p.id === me.id;
+  const t = (p.matchesWon || 0) + (p.matchesLost || 0);
+  const winRate = t ? Math.round(((p.matchesWon || 0) / t) * 100) : 0;
+  const list = posts.filter((x) => x.wallOwner === p.id || (x.authorId === p.id && !x.wallOwner)).sort((a, b) => b.createdAt - a.createdAt).slice(0, 50);
+  const link = SITE_URL + '#/p/' + p.id;
+  const since = p.createdAt ? `${MESES[new Date(p.createdAt).getMonth()]} de ${new Date(p.createdAt).getFullYear()}` : '';
+
+  const changePhoto = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    setBusy(true);
+    try {
+      const photo = await fileToDataUrl(f, 320, 0.75);
+      await db.collection('players').doc(p.id).update({ photo });
+    } catch (x) { alert('No se pudo guardar la foto. Prueba con otra.'); }
+    setBusy(false);
+  };
+  const removePhoto = () => db.collection('players').doc(p.id).update({ photo: FV.delete() });
+  const saveEd = async (e) => {
+    e.preventDefault();
+    try {
+      await db.collection('players').doc(p.id).update({ nickname: ed.nickname.trim() || p.nickname, avatar: ed.avatar, phone: ed.phone.trim() });
+      setEd(null);
+    } catch (x) { alert('No se pudieron guardar los cambios.'); }
+  };
+  const copyLink = () => {
+    if (navigator.clipboard) navigator.clipboard.writeText(link).catch(() => {});
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-3 enter">
+      <button onClick={onClose} className="text-xs font-bold text-slate-400 hover:text-slate-200 flex items-center gap-1">← Volver</button>
+
+      <div className={card + ' !p-0 overflow-hidden'}>
+        <div className="af-cover h-28 sm:h-36" />
+        <div className="px-4 pb-4">
+          <div className="flex items-end justify-between -mt-12">
+            <Av p={p} size="w-24 h-24" text="text-6xl" />
+            <div className="flex gap-1.5 pb-1">
+              {!mine && <button onClick={() => onMessage(p.id)} className="btn-fire px-4 py-2 rounded-xl text-xs">Mensaje 💬</button>}
+              <button onClick={copyLink} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition">{copied ? '¡Copiado! ✅' : '🔗 Copiar enlace'}</button>
+            </div>
+          </div>
+
+          <div className="mt-2">
+            <b className="text-2xl text-slate-100 block leading-tight">{p.nickname}</b>
+            <p className="text-sm text-slate-400">{p.name}</p>
+            <div className="flex flex-wrap items-center gap-2 mt-1.5">
+              <Badge id={p.position} />
+              <span className="text-xs font-black text-amber-400">⭐ {ovr(p.skills).toFixed(1)} OVR</span>
+              {p.isAdmin && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Admin</span>}
+              {since && <span className="text-[11px] text-slate-500">En AceFire desde {since}</span>}
+            </div>
+          </div>
+
+          {mine && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              <label className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-bold cursor-pointer transition">
+                {busy ? 'Subiendo...' : '📷 Cambiar foto'}
+                <input type="file" accept="image/*" className="hidden" onChange={changePhoto} />
+              </label>
+              {p.photo && <button onClick={removePhoto} className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold">Quitar foto</button>}
+              <button onClick={() => setEd(ed ? null : { nickname: p.nickname || '', avatar: p.avatar || '🏐', phone: p.phone || '' })} className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-bold transition">✏️ Editar datos</button>
+              <button onClick={() => { if (confirm('¿Deseas cerrar tu sesión?')) auth.signOut(); }} className="px-3 py-1.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-bold">Cerrar sesión</button>
+            </div>
+          )}
+
+          {mine && ed && (
+            <form onSubmit={saveEd} className="bg-slate-950 border border-slate-800 rounded-2xl p-3 space-y-2 mt-3">
+              <input className={inp} placeholder="Apodo" value={ed.nickname} onChange={(e) => setEd({ ...ed, nickname: e.target.value })} />
+              <div className="grid grid-cols-2 gap-2">
+                <select className={inp} value={ed.avatar} onChange={(e) => setEd({ ...ed, avatar: e.target.value })}>
+                  {AV.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+                <input className={inp} placeholder="WhatsApp (51931...)" value={ed.phone} onChange={(e) => setEd({ ...ed, phone: e.target.value })} />
+              </div>
+              <button className="btn-fire w-full py-2 rounded-xl text-xs">Guardar</button>
+            </form>
+          )}
+
+          {p.phone && (
+            <a target="_blank" rel="noreferrer" href={`https://wa.me/${p.phone.replace(/\D/g, '')}`} className="block text-center py-2 mt-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition">Escribirle por WhatsApp 💬</a>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-2 text-center">
+        {[['G / P', `${p.matchesWon || 0}/${p.matchesLost || 0}`], ['Efic.', `${winRate}%`], ['Sets', p.setsWon || 0], ['MVP', `⭐${p.mvpCount || 0}`]].map(([l, v]) => (
+          <div key={l} className={card + ' !py-2.5 !px-1'}>
+            <div className="num text-2xl text-amber-400">{v}</div>
+            <div className="text-[10px] text-slate-500 mt-1">{l}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className={card + ' space-y-1.5'}>
+        <p className="text-xs font-bold text-amber-400 mb-1">Fundamentos</p>
+        {SK.map((k) => {
+          const v = (p.skills || {})[k] || 3;
+          return (
+            <div key={k} className="flex items-center gap-2 text-[11px]">
+              <span className="w-20 capitalize text-slate-400">{k}</span>
+              <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden"><div className="bar h-full rounded-full" style={{ width: (v / 5) * 100 + '%' }} /></div>
+              <b className="w-5 text-right text-amber-400 font-mono">{v}</b>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-xs font-bold text-amber-400 pt-1">🧱 Muro de {p.nickname} ({list.length})</p>
+      <PostComposer me={me} isAdmin={isAdmin} wallOwner={p.id} placeholder={mine ? `¿Qué quieres compartir en tu muro, ${me.nickname}?` : `Escribe algo en el muro de ${p.nickname}...`} />
+      {list.length === 0 && <p className="text-center text-xs text-slate-500 py-6">{mine ? 'Tu muro está vacío. ¡Publica tu primera foto!' : `Sé el primero en escribirle a ${p.nickname}.`}</p>}
+      {list.map((x) => <PostCard key={x.id} p={x} me={me} players={players} isAdmin={isAdmin} onProfile={onProfile} />)}
+    </div>
+  );
+}
+
+// ===== MENSAJES PRIVADOS =====
+function useMsgs(uid) {
+  const [d, setD] = useState([]);
+  useEffect(() => db.collection('messages').where('participants', 'array-contains', uid).onSnapshot(
+    (s) => setD(s.docs.map((x) => ({ id: x.id, ...x.data() }))),
+    (e) => { console.error(e); setD([]); }
+  ), [uid]);
+  return d;
+}
+const readKey = (uid) => 'af-read-' + uid;
+const getRead = (uid) => { try { return JSON.parse(localStorage.getItem(readKey(uid)) || '{}'); } catch (e) { return {}; } };
+
+function Messages({ me, players, msgs, peer, setPeer, readMap, markRead, onProfile }) {
+  const [q, setQ] = useState('');
+  const [txt, setTxt] = useState('');
+  const [img, setImg] = useState(null);
+  const [big, setBig] = useState(null);
+  const endRef = React.useRef(null);
+  const pickImg = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    if (!f.type.startsWith('image/')) return alert('Por ahora solo se pueden enviar fotos.');
+    try { setImg(await fileToDataUrl(f)); }
+    catch (x) { alert('No se pudo cargar esa foto. Prueba con otra.'); }
+  };
+
+  const other = (m) => (m.from === me.id ? m.to : m.from);
+  const thread = peer ? msgs.filter((m) => other(m) === peer).sort((a, b) => a.createdAt - b.createdAt) : [];
+
+  useEffect(() => {
+    if (!peer) return;
+    markRead(peer);
+    if (endRef.current) endRef.current.scrollIntoView({ block: 'end' });
+  }, [peer, thread.length]);
+
+  const send = async (e) => {
+    e.preventDefault();
+    const t = txt.trim(), im = img;
+    if ((!t && !im) || !peer) return;
+    setTxt(''); setImg(null);
+    try {
+      await db.collection('messages').add({ participants: [me.id, peer], from: me.id, to: peer, text: t.slice(0, 1000), ...(im ? { image: im } : {}), createdAt: Date.now() });
+    } catch (x) { setTxt(t); setImg(im); alert('No se pudo enviar el mensaje. ¿Pegaste las reglas nuevas en Firebase?'); }
+  };
+
+  // ---- Conversación abierta ----
+  if (peer) {
+    const pl = players.find((x) => x.id === peer);
+    return (
+      <div className={card + ' !p-0 overflow-hidden flex flex-col'} style={{ height: 'calc(100vh - 190px)', minHeight: 360 }}>
+        <div className="p-3 border-b border-slate-800 flex items-center gap-2.5">
+          <button onClick={() => setPeer(null)} className="w-8 h-8 rounded-full bg-slate-800 text-slate-300 text-sm shrink-0">←</button>
+          <span onClick={() => pl && onProfile(pl.id)} className="cursor-pointer"><Av p={pl} size="w-9 h-9" text="text-xl" /></span>
+          <div className="min-w-0">
+            <b onClick={() => pl && onProfile(pl.id)} className="text-sm text-slate-100 cursor-pointer hover:underline">{pl ? pl.nickname : 'Jugador'}</b>
+            <p className="text-[10px] text-slate-500 truncate">{pl ? pl.name : ''}</p>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
+          {thread.length === 0 && <p className="text-center text-xs text-slate-500 py-10">Aún no hay mensajes. ¡Rompe el hielo! 🏐</p>}
+          {thread.map((m) => {
+            const mineM = m.from === me.id;
+            return (
+              <div key={m.id} className={'flex ' + (mineM ? 'justify-end' : 'justify-start')}>
+                <div className={'max-w-[80%] rounded-2xl px-3 py-1.5 text-sm ' + (mineM ? 'btn-fire rounded-br-md' : 'bg-slate-800 text-slate-100 rounded-bl-md')}>
+                  {m.image && <img src={m.image} alt="" loading="lazy" onClick={() => setBig(m.image)} className="rounded-xl max-h-64 w-full object-cover mb-1 cursor-pointer" />}
+                  {m.text && <Linkify text={m.text} className="whitespace-pre-line break-words" />}
+                  <p className="text-[9px] mt-0.5 text-right" style={{ opacity: .65 }}>{ago(m.createdAt)}</p>
+                </div>
+              </div>
+            );
+          })}
+          <div ref={endRef} />
+        </div>
+
+        {img && (
+          <div className="px-2.5 pt-2.5 border-t border-slate-800 relative">
+            <img src={img} alt="" className="rounded-xl max-h-32 object-cover" />
+            <button type="button" onClick={() => setImg(null)} className="absolute top-3.5 left-4 w-6 h-6 rounded-full bg-black/70 text-white text-xs">✕</button>
+          </div>
+        )}
+        <form onSubmit={send} className="p-2.5 border-t border-slate-800 flex gap-2 items-center">
+          <label className="w-10 h-10 shrink-0 rounded-xl bg-slate-800 hover:bg-slate-700 flex items-center justify-center cursor-pointer transition" title="Enviar foto">
+            📷
+            <input type="file" accept="image/*" className="hidden" onChange={pickImg} />
+          </label>
+          <input className={inp} placeholder="Escribe un mensaje..." value={txt} maxLength={1000} onChange={(e) => setTxt(e.target.value)} />
+          <button disabled={!txt.trim() && !img} className="btn-fire px-4 h-10 rounded-xl text-sm disabled:opacity-40">Enviar</button>
+        </form>
+        {big && (
+          <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-3" onClick={() => setBig(null)}>
+            <img src={big} alt="" className="max-w-full max-h-full rounded-xl" />
+            <button className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/70 text-white">✕</button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ---- Bandeja de entrada ----
+  const last = {};
+  msgs.forEach((m) => { const o = other(m); if (!last[o] || m.createdAt > last[o].createdAt) last[o] = m; });
+  const convs = Object.keys(last).sort((a, b) => last[b].createdAt - last[a].createdAt);
+  const people = players.filter((x) => x.id !== me.id && ((x.name || '') + (x.nickname || '')).toLowerCase().includes(q.toLowerCase()));
+
+  return (
+    <div className="space-y-3">
+      <div className={card + ' !p-0 overflow-hidden'}>
+        <div className="p-3 border-b border-slate-800 text-xs font-bold text-amber-400">💬 Mis mensajes</div>
+        {convs.length === 0 && <p className="text-center text-xs text-slate-500 py-8 px-4">Todavía no tienes conversaciones. Elige a un jugador abajo y escríbele.</p>}
+        <div className="divide-y divide-slate-800/80">
+          {convs.map((id) => {
+            const m = last[id], pl = players.find((x) => x.id === id);
+            const unread = m.to === me.id && m.createdAt > (readMap[id] || 0);
+            return (
+              <button key={id} onClick={() => setPeer(id)} className="w-full p-3 flex items-center gap-2.5 text-left hover:bg-slate-800/30 transition">
+                <Av p={pl} size="w-10 h-10" text="text-2xl" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center gap-2">
+                    <b className={'text-sm truncate ' + (unread ? 'text-slate-100' : 'text-slate-300')}>{pl ? pl.nickname : 'Jugador'}</b>
+                    <span className="text-[10px] text-slate-500 shrink-0">{ago(m.createdAt)}</span>
+                  </div>
+                  <p className={'text-xs truncate ' + (unread ? 'text-slate-200 font-bold' : 'text-slate-500')}>{m.from === me.id ? 'Tú: ' : ''}{m.text || '📷 Foto'}</p>
+                </div>
+                {unread && <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className={card + ' space-y-2.5'}>
+        <p className="text-xs font-bold text-amber-400">✉️ Nuevo mensaje</p>
+        <input className={inp} placeholder="Buscar jugador..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <div className="max-h-64 overflow-y-auto divide-y divide-slate-800/80">
+          {people.map((x) => (
+            <button key={x.id} onClick={() => setPeer(x.id)} className="w-full py-2 flex items-center gap-2.5 text-left hover:bg-slate-800/30 transition">
+              <Av p={x} size="w-8 h-8" text="text-xl" />
+              <div className="min-w-0">
+                <b className="text-sm text-slate-200">{x.nickname}</b>
+                <p className="text-[10px] text-slate-500 truncate">{x.name}</p>
+              </div>
+            </button>
+          ))}
+          {people.length === 0 && <p className="text-xs text-slate-500 py-3">No se encontró a nadie.</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ICONS = {
+  feed: <path d="M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
+  rank: <path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" />,
+  roster: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5" /></>,
+  teams: <path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />,
+  events: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" /></>,
+  chat: <path d="M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-5.3A8 8 0 1 1 21 12z" />,
+  admin: <path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z" />
+};
+
+function VerifyBanner({ user }) {
+  const [sent, setSent] = useState(false);
+  const [err, setErr] = useState('');
+  const send = async () => {
+    setErr('');
+    try { await user.sendEmailVerification(); setSent(true); }
+    catch (x) { setErr('No se pudo enviar. Espera un momento e inténtalo otra vez.'); }
+  };
+  const done = async () => {
+    await user.reload();
+    await user.getIdToken(true);
+    location.reload();
+  };
+  return (
+    <div className={card + ' border-amber-500/40 space-y-2'}>
+      <p className="text-sm font-bold text-amber-400">🔐 Verifica tu correo para activar el modo Admin</p>
+      <p className="text-[11px] text-slate-400">Es una medida de seguridad: así nadie puede hacerse pasar por ti.</p>
+      {err && <p className="text-xs text-rose-400">{err}</p>}
+      <div className="flex gap-2">
+        <button onClick={send} className="btn-fire px-3 py-1.5 rounded-xl text-xs">{sent ? 'Correo enviado, revisa tu bandeja' : 'Enviar correo de verificación'}</button>
+        <button onClick={done} className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold">Ya verifiqué</button>
+      </div>
+    </div>
+  );
+}
+
+// ===== COMPONENTE PRINCIPAL CON NAVEGACIÓN Y ROLES =====
+function Main({ user }) {
+  const players = useCol('players');
+  const posts = useCol('posts', (c) => c.orderBy('createdAt', 'desc').limit(150));
+  const events = useCol('events');
+  const msgs = useMsgs(user.uid);
+  const [readMap, setReadMap] = useState(() => getRead(user.uid));
+  const [peer, setPeer] = useState(null);
+  const markRead = (pid) => {
+    const m = { ...getRead(user.uid), [pid]: Date.now() };
+    try { localStorage.setItem(readKey(user.uid), JSON.stringify(m)); } catch (e) {}
+    setReadMap(m);
+  };
+  const [tab, setTab] = useState(() => (evHash() ? 'events' : 'feed'));
+  const [modal, setModal] = useState(null);
+  const [focusEv, setFocusEv] = useState(evHash);
+  const [teamEv, setTeamEv] = useState(null);
+  const [profile, setProfileId] = useState(hashId);
+  const setProfile = (id) => { location.hash = id ? '#/p/' + id : ''; };
+  useEffect(() => {
+    const f = () => { setProfileId(hashId()); const e = evHash(); setFocusEv(e); if (e) setTab('events'); else window.scrollTo({ top: 0 }); };
+    window.addEventListener('hashchange', f);
+    return () => window.removeEventListener('hashchange', f);
+  }, []);
+  const [theme, setTheme] = useState(document.documentElement.dataset.theme || 'light');
+  const toggleTheme = () => {
+    const t = theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('af-theme', t); } catch (e) {}
+    setTheme(t);
+  };
+
+  if (players === null || posts === null || events === null) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
+        <img src={LOGO_ICON} alt="" className="af-mark af-pulse" style={{ width: 44, height: 44, objectFit: 'cover', background: 'none' }} />
+        <p className="text-xs text-slate-400 font-bold">Cargando AceFire…</p>
+      </div>
+    );
+  }
+
+  const me = players.find((p) => p.id === user.uid);
+  if (!me) return <Auth user={user} />;
+
+  // Validación de Administradores: Whitelist de correos o campo isAdmin en BD
+  const userEmail = (user.email || me.email || '').toLowerCase().trim();
+  const isOwner = ADMIN_EMAILS.includes(userEmail) && user.emailVerified === true;
+  const needsVerify = ADMIN_EMAILS.includes(userEmail) && !user.emailVerified;
+  const isAdmin = isOwner || me.isAdmin === true;
+
+  const baseTabs = [
+    ['feed', 'Muro'],
+    ['rank', 'Ranking'],
+    ['roster', 'Jugadores'],
+    ['teams', 'Equipos'],
+    ['events', 'Pichangas'],
+    ['chat', 'Mensajes']
+  ];
+  const unread = msgs.filter((m) => m.to === me.id && m.createdAt > (readMap[m.from] || 0)).length;
+  const tabs = isAdmin ? [...baseTabs, ['admin', 'Admin']] : baseTabs;
+
+  return (
+    <div className="relative z-10 max-w-3xl mx-auto p-3 pb-28 space-y-4">
+      {/* Cabecera */}
+      <header className="hdr sticky top-0 z-40 -mx-3 -mt-3 px-3 py-2.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <img src={LOGO_ICON} alt="" className="af-mark" style={{ objectFit: 'cover', background: 'none' }} /><span className="logo text-2xl">Ace<span className="fire">Fire</span></span>
+          {isAdmin && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Admin</span>}
+        </div>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button onClick={() => setModal({})} className="btn-fire px-3 py-1.5 rounded-xl text-xs flex items-center gap-1">
+              <span>🔥</span>
+              <span>Registrar partido</span>
+            </button>
+          )}
+          {WA_GROUP_LINK && (
+            <a href={WA_GROUP_LINK} target="_blank" rel="noreferrer" title="Grupo de WhatsApp" className="w-9 h-9 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-base flex items-center justify-center">💬</a>
+          )}
+          {WA_COMMUNITY_LINK && (
+            <a href={WA_COMMUNITY_LINK} target="_blank" rel="noreferrer" title="Comunidad de WhatsApp" className="w-9 h-9 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-base flex items-center justify-center">🌐</a>
+          )}
+          <button title={theme === 'dark' ? 'Modo claro' : 'Modo oscuro'} onClick={toggleTheme} className="w-9 h-9 rounded-full bg-slate-800 text-base flex items-center justify-center">
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
+          <button title="Mi perfil" onClick={() => setProfile(me.id)} className="w-9 h-9 rounded-full bg-slate-900 border-2 border-amber-500 text-base flex items-center justify-center overflow-hidden">
+            {me.photo ? <img src={me.photo} alt="" className="w-full h-full object-cover" /> : me.avatar}
+          </button>
+        </div>
+      </header>
+
+      {needsVerify && <VerifyBanner user={user} />}
+
+      {/* Contenedor de Vistas */}
+      <main className="enter">
+        {profile && <ProfilePage id={profile} me={me} players={players} posts={posts} isAdmin={isAdmin} onProfile={setProfile} onClose={() => setProfile(null)} onMessage={(id) => { setProfile(null); setPeer(id); setTab('chat'); }} />}
+        {!profile && tab === 'feed' && <Feed me={me} posts={posts} players={players} isAdmin={isAdmin} onProfile={setProfile} events={events} onGo={() => setTab('events')} onTab={(t) => { setTab(t); window.scrollTo({ top: 0 }); }} />}
+        {!profile && tab === 'rank' && <Ranking players={players} onProfile={setProfile} />}
+        {!profile && tab === 'roster' && <Roster players={players} onProfile={setProfile} />}
+        {!profile && tab === 'teams' && <Teams key={teamEv || 'x'} players={players} events={events} initialEv={teamEv} isAdmin={isAdmin} onRegister={(a, b) => setModal({ a, b })} />}
+        {!profile && tab === 'events' && <Events me={me} events={events} players={players} isAdmin={isAdmin} focusId={focusEv} onProfile={setProfile} onTeams={(id) => { setTeamEv(id); setTab('teams'); window.scrollTo({ top: 0 }); }} />}
+        {!profile && tab === 'chat' && <Messages me={me} players={players} msgs={msgs} peer={peer} setPeer={setPeer} readMap={readMap} markRead={markRead} onProfile={setProfile} />}
+        {!profile && tab === 'admin' && isAdmin && <AdminPanel me={me} players={players} />}
+      </main>
+
+      {/* Modal de Marcador Oficial */}
+      {/* Barra de navegación inferior */}
+      <nav className="tabbar fixed bottom-0 inset-x-0 z-40">
+        <div className="max-w-3xl mx-auto flex">
+          {tabs.map(([id, l]) => (
+            <button key={id} onClick={() => { if (profile) setProfile(null); else if (evHash()) location.hash = ''; setTab(id); window.scrollTo({ top: 0 }); }} className={`af-tab relative flex-1 flex flex-col items-center gap-0.5 pt-2 pb-1.5 text-[10px] font-bold ${tab === id ? 'af-tab-on text-amber-400' : 'text-slate-400'}`}>
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">{ICONS[id]}</svg>
+              {id === 'chat' && unread > 0 && <span className="absolute top-1 right-1/4 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center">{unread > 9 ? '9+' : unread}</span>}
+              <span>{l}</span>
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      {modal && <MatchModal players={players} init={modal} onClose={() => setModal(null)} />}
+    </div>
+  );
+}
+
+// ===== ROOT APP =====
+function App() {
+  const [user, setUser] = useState(undefined);
+  const [reg, setReg] = useState(false);
+
+  useEffect(() => auth.onAuthStateChanged((u) => setUser(u)), []);
+
+  if (user === undefined || (user && reg)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
+        <img src={LOGO_ICON} alt="" className="af-mark af-pulse" style={{ width: 44, height: 44, objectFit: 'cover', background: 'none' }} />
+        <p className="text-xs text-slate-400 font-bold">Iniciando…</p>
+      </div>
+    );
+  }
+
+  if (!user) return <Auth setReg={setReg} />;
+  return <Main user={user} />;
+}
+
+const Embers = () => (
+  <div className="embers" aria-hidden="true">
+    {[6, 18, 30, 42, 55, 67, 78, 90, 12, 48].map((l, i) => (
+      <i key={i} style={{ left: l + '%', animationDelay: i * 1.3 + 's', animationDuration: 7 + (i % 4) * 2 + 's' }} />
+    ))}
+  </div>
+);
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <>
+    <App />
+  </>
+);
+</script>
+</body>
+</html>
