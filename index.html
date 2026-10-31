@@ -286,7 +286,9 @@ article img { border-radius:17px; }
 
 /* ARREGLOS MÓVIL: evita que la página se ensanche, se acerque sola o se corte */
 html { -webkit-text-size-adjust:100%; text-size-adjust:100%; overflow-x:hidden; max-width:100%; }
-body { overflow-x:clip; max-width:100%; word-break:break-word; overflow-wrap:anywhere; }
+body { overflow-x:clip; max-width:100%; }
+article p,.af-card p { overflow-wrap:anywhere; }
+.logo { white-space:nowrap; }
 img,video,svg,canvas { max-width:100%; }
 img { height:auto; }
 article,.af-card,main,.score { min-width:0; max-width:100%; }
@@ -301,6 +303,11 @@ pre,code,table { max-width:100%; overflow-x:auto; }
   input,select,textarea,.af-inp { font-size:16px !important; }
   .score { min-height:0; }
   .af-card { padding:14px; }
+}
+@media (max-width:520px) {
+  .hdr .w-9 { width:32px; height:32px; font-size:15px; }
+  .hdr .af-mark { width:32px; height:32px; border-radius:11px; }
+  .af-tab { font-size:8.5px; }
 }
 @media (max-width:380px) {
   .af-tab { font-size:8px; }
@@ -2677,11 +2684,11 @@ function Main({ user }) {
   const baseTabs = [
     ['feed', 'Muro'],
     ['rank', 'Ranking'],
-    ['roster', 'Jugadores'],
+    ['roster', 'Plantel'],
     ['teams', 'Equipos'],
     ['events', 'Pichangas'],
     ['polos', 'Polos'],
-    ['chat', 'Mensajes']
+    ['chat', 'Chat']
   ];
   const unread = msgs.filter((m) => m.to === me.id && m.createdAt > (readMap[m.from] || 0)).length;
   const tabs = isAdmin ? [...baseTabs, ['admin', 'Admin']] : baseTabs;
@@ -2689,16 +2696,16 @@ function Main({ user }) {
   return (
     <div className="relative z-10 max-w-3xl mx-auto p-3 pb-28 space-y-4">
       {/* Cabecera */}
-      <header className="hdr sticky top-0 z-40 -mx-3 -mt-3 px-3 py-2.5 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      <header className="hdr sticky top-0 z-40 -mx-3 -mt-3 px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
+        <div className="flex items-center gap-2 shrink-0">
           <img src={LOGO_ICON} alt="" className="af-mark" style={{ objectFit: 'cover', background: 'none' }} /><span className="logo text-2xl">Ace<span className="fire">Fire</span></span>
-          {isAdmin && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Admin</span>}
+          {isAdmin && <span className="hidden sm:inline whitespace-nowrap text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Admin</span>}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 ml-auto">
           {isAdmin && (
-            <button onClick={() => setModal({})} className="btn-fire px-3 py-1.5 rounded-xl text-xs flex items-center gap-1">
+            <button onClick={() => setModal({})} title="Registrar partido" className="btn-fire px-3 py-1.5 rounded-xl text-xs flex items-center gap-1 whitespace-nowrap">
               <span>🔥</span>
-              <span>Registrar partido</span>
+              <span className="hidden sm:inline">Registrar partido</span>
             </button>
           )}
           {WA_GROUP_LINK && (
