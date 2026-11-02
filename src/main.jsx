@@ -1404,11 +1404,11 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
             </div>
           )}
 
-          {!past && !(payClosed(ev) && !inRaw) && (
+         
             <button onClick={() => toggle(ev)} className={inRaw ? 'w-full py-2.5 rounded-xl text-sm font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition' : 'btn-fire fire-on w-full py-2.5 rounded-xl text-sm shadow transition'}>
               {inRaw ? 'No voy (salir de la lista)' : full ? 'Entrar a lista de espera' : '¡Me anoto! 🔥'}
             </button>
-          )}
+      
 
           {mapsOf(ev) && (
             <a href={mapsOf(ev)} target="_blank" rel="noreferrer" className="block text-center w-full py-2 rounded-xl border border-blue-500/40 bg-blue-500/10 text-blue-400 text-xs font-bold hover:bg-blue-500/20 transition">📍 Abrir en Google Maps</a>
