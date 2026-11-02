@@ -623,184 +623,191 @@ function Feed({ me, posts, players, isAdmin, onProfile, events, onGo, onTab }) {
   );
 }
 
-// ===== TABLA DE POSICIONES Y RANKING =====
+// ===== TABLA DE POSICIONES Y RANKING (por partidos) =====
 function Ranking({ players, isAdmin, onProfile }) {
-  const [edit, setEdit] = useState(false);
   const [ed, setEd] = useState(null);
+  const [sortBy, setSortBy] = useState('efic');
+  const [minPJ, setMinPJ] = useState(0);
+  const [busy, setBusy] = useState(false);
+
+  const n = (v) => Math.max(0, Math.min(9999, Math.floor(+v || 0)));
+  const pj = (p) => (p.matchesWon || 0) + (p.matchesLost || 0);
+  const eff = (p) => (pj(p) ? Math.round(((p.matchesWon || 0) / pj(p)) * 100) : 0);
+
   const saveEd = async () => {
-    const n = (v) => Math.max(0, Math.min(9999, Math.floor(+v || 0)));
     try {
-      await db.collection('players').doc(ed.id).update({ matchesWon: n(ed.matchesWon), matchesLost: n(ed.matchesLost), setsWon: n(ed.setsWon), mvpCount: n(ed.mvpCount) });
+      await db.collection('players').doc(ed.id).update({
+        matchesWon: n(ed.matchesWon), matchesLost: n(ed.matchesLost),
+        setsWon: n(ed.setsWon), mvpCount: n(ed.mvpCount)
+      });
       setEd(null);
     } catch (e) { console.error(e); alert('No se pudo guardar. Solo los administradores pueden editar el ranking.'); }
   };
-  const rows = useMemo(() => [...players].sort((a, b) => {
-    const ta = (a.matchesWon || 0) + (a.matchesLost || 0);
-    const tb = (b.matchesWon || 0) + (b.matchesLost || 0);
-    const wa = ta ? (a.matchesWon || 0) / ta : 0;
-    const wb = tb ? (b.matchesWon || 0) / tb : 0;
-    return wb - wa || (b.matchesWon || 0) - (a.matchesWon || 0) || (b.setsWon || 0) - (a.setsWon || 0);
-  }), [players]);
 
-  const eff = (p) => { const t = (p.matchesWon || 0) + (p.matchesLost || 0); return t ? Math.round(((p.matchesWon || 0) / t) * 100) : 0; };
+  // Recalcula G/P/Sets/MVP de todos a partir del historial de partidos
+  const recalc = async () => {
+    if (!confirm('Esto recalcula TODAS las estadísticas desde los partidos registrados y reemplaza las ediciones manuales. ¿Continuar?')) return;
+    setBusy(true);
+    try {
+      const snap = await db.collection('matches').get();
+      const st = {};
+      players.forEach((p) => { st[p.id] = { matchesWon: 0, matchesLost: 0, setsWon: 0, mvpCount: 0 }; });
+      snap.docs.forEach((d) => {
+        const m = d.data();
+        const aWins = m.scoreA > m.scoreB;
+        const ws = Math.max(m.scoreA || 0, m.scoreB || 0);
+        (m.teamA || []).forEach((id) => { if (!st[id]) return; if (aWins) { st[id].matchesWon++; st[id].setsWon += ws; } else st[id].matchesLost++; });
+        (m.teamB || []).forEach((id) => { if (!st[id]) return; if (!aWins) { st[id].matchesWon++; st[id].setsWon += ws; } else st[id].matchesLost++; });
+        if (m.mvp && st[m.mvp]) st[m.mvp].mvpCount++;
+      });
+      const ids = Object.keys(st);
+      for (let i = 0; i < ids.length; i += 400) {
+        const b = db.batch();
+        ids.slice(i, i + 400).forEach((id) => b.update(db.collection('players').doc(id), st[id]));
+        await b.commit();
+      }
+      alert(`Listo: ranking recalculado con ${snap.size} partidos.`);
+    } catch (e) { console.error(e); alert('No se pudo recalcular: ' + e.message); }
+    setBusy(false);
+  };
+
+  const SORTS = [
+    ['efic', '% Eficacia'], ['wins', 'Victorias'], ['pj', 'Partidos'], ['sets', 'Sets'], ['mvp', 'MVP']
+  ];
+
+  const rows = useMemo(() => {
+    const list = players.filter((p) => pj(p) >= minPJ);
+    return [...list].sort((a, b) => {
+      const byEf = eff(b) - eff(a) || (b.matchesWon || 0) - (a.matchesWon || 0) || (b.setsWon || 0) - (a.setsWon || 0);
+      if (sortBy === 'wins') return (b.matchesWon || 0) - (a.matchesWon || 0) || byEf;
+      if (sortBy === 'pj') return pj(b) - pj(a) || byEf;
+      if (sortBy === 'sets') return (b.setsWon || 0) - (a.setsWon || 0) || byEf;
+      if (sortBy === 'mvp') return (b.mvpCount || 0) - (a.mvpCount || 0) || byEf;
+      return byEf;
+    });
+  }, [players, sortBy, minPJ]);
+
   const top = rows.slice(0, 3);
   const podium = top.length === 3 ? [[top[1], 2, '🥈'], [top[0], 1, '👑'], [top[2], 3, '🥉']] : [];
+  const maxPJ = Math.max(1, ...players.map(pj));
 
   return (
     <div className="space-y-3">
-    {podium.length > 0 && (
-      <div className="grid grid-cols-3 gap-2 items-end px-1 pt-2">
-        {podium.map(([p, n, medal]) => (
-          <button key={p.id} onClick={() => onProfile(p.id)} className={`pod pod-${n} enter`}>
-            <span className="text-xl leading-none mb-1">{medal}</span>
-            <Av p={p} size={n === 1 ? 'w-14 h-14' : 'w-11 h-11'} text={n === 1 ? 'text-3xl' : 'text-2xl'} />
-            <b className="text-sm text-slate-100 mt-1.5 truncate max-w-full">{p.nickname}</b>
-            <span className="num text-2xl text-amber-400 mt-1">{eff(p)}%</span>
-            <span className="text-[10px] text-slate-400">{p.matchesWon || 0}G · {p.matchesLost || 0}P</span>
-          </button>
-        ))}
-      </div>
-    )}
-    <div className={card + ' !p-0 overflow-hidden'}>
-      <div className="p-3 bg-slate-900 border-b border-slate-800 text-xs font-bold flex justify-between items-center text-amber-400">
-        <span>🏆 Tabla de Eficacia & Quién Gana</span>
-        <span className="flex items-center gap-2">
-          <span className="text-slate-400 font-normal">G / P · Efic · Sets · MVP</span>
-          {isAdmin && <button onClick={() => setEdit(!edit)} className={`px-2 py-1 rounded-lg font-bold border ${edit ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-800 text-amber-400 border-slate-700'}`}>{edit ? '✓ Listo' : '✏️ Editar'}</button>}
-        </span>
-      </div>
-
-      <div className="divide-y divide-slate-800/80">
-        {rows.map((p, i) => {
-          const t = (p.matchesWon || 0) + (p.matchesLost || 0);
-          const winRate = t ? Math.round(((p.matchesWon || 0) / t) * 100) : 0;
-          return (
-            <div key={p.id} onClick={() => onProfile(p.id)} className="p-3 flex justify-between items-center text-xs hover:bg-slate-800/30 transition cursor-pointer">
-              <div className="flex items-center gap-2.5">
-                <span className={`w-6 text-center font-bold text-sm ${i === 0 ? 'text-amber-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-amber-600' : 'text-slate-500'}`}>
-                  {i === 0 ? '👑' : i + 1}
-                </span>
-                <Av p={p} size="w-8 h-8" text="text-xl" />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <b className="text-sm text-slate-200">{p.nickname}</b>
-                    <Badge id={p.position} />
-                  </div>
-                  <p className="text-[10px] text-slate-500">{p.name}</p>
-                </div>
-              </div>
-
-              <div className="font-mono flex items-center gap-3">
-                <span className="text-xs">
-                  <b className="text-emerald-400">{p.matchesWon || 0}</b>
-                  <span className="text-slate-600">/</span>
-                  <b className="text-rose-400">{p.matchesLost || 0}</b>
-                </span>
-                <span className="text-amber-400 font-bold w-10 text-right">{winRate}%</span>
-                <span className="w-6 text-right text-slate-300">{p.setsWon || 0}s</span>
-                <span className="w-8 text-right text-amber-300 font-bold">⭐{p.mvpCount || 0}</span>
-                {isAdmin && edit && <button onClick={(e) => { e.stopPropagation(); setEd({ ...p }); }} className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-500/40 text-sm">✏️</button>}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-    {ed && (
-      <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3" onClick={() => setEd(null)}>
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 space-y-3 text-xs enter shadow-2xl" onClick={(e) => e.stopPropagation()}>
-          <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-            <b className="text-sm text-amber-400">Editar ranking de {ed.nickname}</b>
-            <button onClick={() => setEd(null)} className="text-slate-400 hover:text-white text-base">✕</button>
-          </div>
-          {[['matchesWon', 'Partidos ganados'], ['matchesLost', 'Partidos perdidos'], ['setsWon', 'Sets ganados'], ['mvpCount', 'MVPs']].map(([k, l]) => (
-            <div key={k} className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
-              <span className="text-slate-400 flex-1">{l}</span>
-              <button type="button" onClick={() => setEd({ ...ed, [k]: Math.max(0, (+ed[k] || 0) - 1) })} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 font-black text-base">−</button>
-              <input type="number" min="0" inputMode="numeric" className="w-14 text-center bg-slate-900 border border-slate-800 rounded-lg py-1.5 font-mono text-amber-400 font-bold" value={ed[k] ?? 0} onChange={(e) => setEd({ ...ed, [k]: e.target.value })} />
-              <button type="button" onClick={() => setEd({ ...ed, [k]: (+ed[k] || 0) + 1 })} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 font-black text-base">+</button>
-            </div>
-          ))}
-          <p className="text-[11px] text-slate-500">Eficacia resultante: <b className="text-amber-400">{eff({ matchesWon: +ed.matchesWon || 0, matchesLost: +ed.matchesLost || 0 })}%</b></p>
-          <div className="flex gap-2 pt-1">
-            <button onClick={() => setEd(null)} className="w-1/2 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition">Cancelar</button>
-            <button onClick={saveEd} className="btn-fire w-1/2 py-2 rounded-xl font-black shadow transition">Guardar</button>
-          </div>
-        </div>
-      </div>
-    )}
-    </div>
-  );
-}
-
-// ===== ROSTER DE JUGADORES (DIRECTORIO Y SKILLS) =====
-function Roster({ players, onProfile }) {
-  const [q, setQ] = useState('');
-  const [pf, setPf] = useState('all');
-
-  const list = players.filter((p) => {
-    const textMatch = ((p.name || '') + (p.nickname || '')).toLowerCase().includes(q.toLowerCase());
-    const posMatch = pf === 'all' || p.position === pf;
-    return textMatch && posMatch;
-  });
-
-  return (
-    <div className="space-y-3">
-      <div className={card + ' space-y-2.5'}>
-        <input className={inp} placeholder="Buscar por nombre o apodo..." value={q} onChange={(e) => setQ(e.target.value)} />
-        <div className="flex gap-1 overflow-x-auto pb-1">
-          {[{ id: 'all', s: 'Todos' }, ...POS].map((p) => (
-            <button key={p.id} onClick={() => setPf(p.id)} className={`text-xs px-3 py-1 rounded-xl border transition whitespace-nowrap ${pf === p.id ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 font-bold' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
-              {p.s}
+      {podium.length > 0 && (
+        <div className="grid grid-cols-3 gap-2 items-end px-1 pt-2">
+          {podium.map(([p, k, medal]) => (
+            <button key={p.id} onClick={() => onProfile(p.id)} className={`pod pod-${k} enter`}>
+              <span className="text-xl leading-none mb-1">{medal}</span>
+              <Av p={p} size={k === 1 ? 'w-14 h-14' : 'w-11 h-11'} text={k === 1 ? 'text-3xl' : 'text-2xl'} />
+              <b className="text-sm text-slate-100 mt-1.5 truncate max-w-full">{p.nickname}</b>
+              <span className="num text-2xl text-amber-400 mt-1">{eff(p)}%</span>
+              <span className="text-[10px] text-slate-400">{p.matchesWon || 0}G · {p.matchesLost || 0}P · {pj(p)} PJ</span>
             </button>
           ))}
         </div>
+      )}
+
+      {/* Filtros */}
+      <div className={card + ' space-y-2.5'}>
+        <div className="flex gap-1 overflow-x-auto pb-1">
+          {SORTS.map(([id, l]) => (
+            <button key={id} onClick={() => setSortBy(id)} className={`text-xs px-3 py-1 rounded-xl border whitespace-nowrap transition ${sortBy === id ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 font-bold' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>{l}</button>
+          ))}
+        </div>
+        <div className="flex items-center justify-between gap-2 text-xs text-slate-400">
+          <span>Mínimo de partidos jugados: <b className="text-amber-400">{minPJ}</b></span>
+          <div className="flex gap-1">
+            {[0, 3, 5, 10].map((k) => (
+              <button key={k} onClick={() => setMinPJ(k)} className={`w-9 h-7 rounded-lg font-bold ${minPJ === k ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>{k}</button>
+            ))}
+          </div>
+        </div>
+        {isAdmin && (
+          <button disabled={busy} onClick={recalc} className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-bold disabled:opacity-50 transition">
+            {busy ? 'Recalculando...' : '🔄 Recalcular ranking desde los partidos registrados'}
+          </button>
+        )}
       </div>
 
-      <div className="grid sm:grid-cols-2 gap-3">
-        {list.map((p) => {
-          const rating = ovr(p.skills).toFixed(1);
-          return (
-            <div key={p.id} onClick={() => onProfile(p.id)} className={card + ' hover:border-slate-700 transition cursor-pointer'}>
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-2.5">
-                  <Av p={p} size="w-12 h-12" text="text-3xl" />
-                  <div>
-                    <b className="text-base text-slate-100">{p.nickname}</b>
-                    <p className="text-[11px] text-slate-400">{p.name}</p>
+      <div className={card + ' !p-0 overflow-hidden'}>
+        <div className="p-3 bg-slate-900 border-b border-slate-800 text-xs font-bold flex justify-between items-center text-amber-400">
+          <span>🏆 Ranking por partidos</span>
+          <span className="text-slate-400 font-normal">{rows.length} jugadores</span>
+        </div>
+
+        <div className="divide-y divide-slate-800/80">
+          {rows.map((p, i) => {
+            const t = pj(p), w = p.matchesWon || 0, l = p.matchesLost || 0;
+            return (
+              <div key={p.id} onClick={() => onProfile(p.id)} className="p-3 space-y-2 hover:bg-slate-800/30 transition cursor-pointer">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className={`w-6 text-center font-bold text-sm ${i === 0 ? 'text-amber-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-amber-600' : 'text-slate-500'}`}>{i === 0 ? '👑' : i + 1}</span>
+                    <Av p={p} size="w-9 h-9" text="text-xl" />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <b className="text-sm text-slate-200 truncate">{p.nickname}</b>
+                        <Badge id={p.position} />
+                      </div>
+                      <p className="text-[10px] text-slate-500 truncate">{t} partidos · {p.setsWon || 0} sets · ⭐{p.mvpCount || 0} MVP</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="num text-xl text-amber-400 font-black">{eff(p)}%</span>
+                    {isAdmin && (
+                      <button onClick={(e) => { e.stopPropagation(); setEd({ ...p }); }} title="Editar estadísticas" className="w-8 h-8 rounded-lg bg-amber-500/20 border border-amber-500/40 text-sm">✏️</button>
+                    )}
                   </div>
                 </div>
-                <span className="text-xs font-black text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-xl">
-                  ⭐ {rating}
-                </span>
-              </div>
 
-              <div className="mt-2.5 flex items-center justify-between">
-                <Badge id={p.position} />
-                {p.birthday && <span className="text-[11px] text-slate-400">🎂 {+p.birthday.slice(3)}/{+p.birthday.slice(0, 2)}</span>}
-              </div>
-
-              <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-[10px] bg-slate-950 rounded-xl p-2.5 border border-slate-800/80">
-                {SK.map((k) => (
-                  <div key={k} className="flex justify-between items-center">
-                    <span className="capitalize text-slate-400">{k}</span>
-                    <b className="text-amber-400 font-mono">{(p.skills || {})[k] || 3}/5</b>
+                {/* Barra de estadísticas: ganados (verde) vs perdidos (rojo) */}
+                <div className="space-y-1">
+                  <div className="h-2.5 rounded-full bg-slate-800 overflow-hidden flex">
+                    {t > 0 ? (
+                      <>
+                        <div className="h-full bg-emerald-500" style={{ width: (w / t) * 100 + '%' }} />
+                        <div className="h-full bg-rose-500" style={{ width: (l / t) * 100 + '%' }} />
+                      </>
+                    ) : <div className="h-full w-full bg-slate-700/50" />}
                   </div>
-                ))}
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-emerald-400 font-bold">{w} ganados</span>
+                    <span className="text-slate-500">actividad {Math.round((t / maxPJ) * 100)}%</span>
+                    <span className="text-rose-400 font-bold">{l} perdidos</span>
+                  </div>
+                </div>
               </div>
-
-              <div className="mt-2.5 pt-2 border-t border-slate-800 flex justify-between items-center text-xs">
-                <span>Victorias: <b className="text-emerald-400">{p.matchesWon || 0}</b> | MVPs: <b className="text-amber-400">{p.mvpCount || 0}</b></span>
-                {p.phone && (
-                  <a target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-emerald-400 font-bold hover:underline" href={`https://wa.me/${p.phone.replace(/\D/g, '')}`}>
-                    WhatsApp 💬
-                  </a>
-                )}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+          {rows.length === 0 && <p className="text-center text-xs text-slate-500 py-8">Nadie cumple el mínimo de partidos todavía.</p>}
+        </div>
       </div>
+
+      {ed && (
+        <div className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-3" onClick={() => setEd(null)}>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm p-5 space-y-3 text-xs enter shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+              <b className="text-sm text-amber-400">Editar ranking de {ed.nickname}</b>
+              <button onClick={() => setEd(null)} className="text-slate-400 hover:text-white text-base">✕</button>
+            </div>
+            {[['matchesWon', 'Partidos ganados'], ['matchesLost', 'Partidos perdidos'], ['setsWon', 'Sets ganados'], ['mvpCount', 'MVPs']].map(([k, l]) => (
+              <div key={k} className="flex items-center gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                <span className="text-slate-400 flex-1">{l}</span>
+                <button type="button" onClick={() => setEd({ ...ed, [k]: Math.max(0, (+ed[k] || 0) - 1) })} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 font-black text-base">−</button>
+                <input type="number" min="0" inputMode="numeric" className="w-14 text-center bg-slate-900 border border-slate-800 rounded-lg py-1.5 font-mono text-amber-400 font-bold" value={ed[k] ?? 0} onChange={(e) => setEd({ ...ed, [k]: e.target.value })} />
+                <button type="button" onClick={() => setEd({ ...ed, [k]: (+ed[k] || 0) + 1 })} className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 font-black text-base">+</button>
+              </div>
+            ))}
+            <p className="text-[11px] text-slate-500">
+              Partidos jugados: <b className="text-slate-300">{n(ed.matchesWon) + n(ed.matchesLost)}</b> · Eficacia: <b className="text-amber-400">{eff({ matchesWon: n(ed.matchesWon), matchesLost: n(ed.matchesLost) })}%</b>
+            </p>
+            <div className="flex gap-2 pt-1">
+              <button onClick={() => setEd(null)} className="w-1/2 py-2 bg-slate-800 hover:bg-slate-700 rounded-xl font-bold transition">Cancelar</button>
+              <button onClick={saveEd} className="btn-fire w-1/2 py-2 rounded-xl font-black shadow transition">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
