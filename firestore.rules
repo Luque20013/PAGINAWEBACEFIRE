@@ -147,6 +147,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ---------- Asistencia del mes (un documento por mes: 2026-11) ----------
+    match /attendance/{month} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
     // ---------- Pedidos de polos ----------
     match /polos/{uid} {
       allow read: if signedIn();
