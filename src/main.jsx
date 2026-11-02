@@ -934,12 +934,13 @@ function Triangular({ tri, players, isAdmin }) {
   );
 }
 
-// ===== ROSTER DE JUGADORES (DIRECTORIO Y SKILLS) =====
-function Roster({ players, onProfile }) {
+// ===== ROSTER DE JUGADORES (PLANTEL) =====
+function Roster({ players = [], onProfile }) {
   const [q, setQ] = useState('');
   const [pf, setPf] = useState('all');
 
-  const list = players.filter((p) => {
+  const list = (players || []).filter((p) => {
+    if (!p) return false;
     const textMatch = ((p.name || '') + (p.nickname || '')).toLowerCase().includes(q.toLowerCase());
     const posMatch = pf === 'all' || p.position === pf;
     return textMatch && posMatch;
@@ -948,10 +949,19 @@ function Roster({ players, onProfile }) {
   return (
     <div className="space-y-3">
       <div className={card + ' space-y-2.5'}>
-        <input className={inp} placeholder="Buscar por nombre o apodo..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <input 
+          className={inp} 
+          placeholder="Buscar por nombre o apodo..." 
+          value={q} 
+          onChange={(e) => setQ(e.target.value)} 
+        />
         <div className="flex gap-1 overflow-x-auto pb-1">
           {[{ id: 'all', s: 'Todos' }, ...POS].map((p) => (
-            <button key={p.id} onClick={() => setPf(p.id)} className={`text-xs px-3 py-1 rounded-xl border transition whitespace-nowrap ${pf === p.id ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 font-bold' : 'bg-slate-950 border-slate-800 text-slate-400'}`}>
+            <button 
+              key={p.id} 
+              onClick={() => setPf(p.id)} 
+              className={`text-xs px-3 py-1 rounded-xl border transition whitespace-nowrap ${pf === p.id ? 'bg-amber-500/20 border-amber-500/40 text-amber-400 font-bold' : 'bg-slate-950 border-slate-800 text-slate-400'}`}
+            >
               {p.s}
             </button>
           ))}
@@ -960,15 +970,19 @@ function Roster({ players, onProfile }) {
 
       <div className="grid sm:grid-cols-2 gap-3">
         {list.map((p) => {
-          const rating = ovr(p.skills).toFixed(1);
+          const rating = ovr(p.skills || {}).toFixed(1);
           return (
-            <div key={p.id} onClick={() => onProfile(p.id)} className={card + ' hover:border-slate-700 transition cursor-pointer'}>
+            <div 
+              key={p.id} 
+              onClick={() => onProfile && onProfile(p.id)} 
+              className={card + ' hover:border-slate-700 transition cursor-pointer'}
+            >
               <div className="flex justify-between items-start">
                 <div className="flex items-center gap-2.5">
                   <Av p={p} size="w-12 h-12" text="text-3xl" />
                   <div>
-                    <b className="text-base text-slate-100">{p.nickname}</b>
-                    <p className="text-[11px] text-slate-400">{p.name}</p>
+                    <b className="text-base text-slate-100">{p.nickname || p.name}</b>
+                    <p className="text-[11px] text-slate-400">{p.name || ''}</p>
                   </div>
                 </div>
                 <span className="text-xs font-black text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 rounded-xl">
@@ -978,14 +992,14 @@ function Roster({ players, onProfile }) {
 
               <div className="mt-2.5 flex items-center justify-between">
                 <Badge id={p.position} />
-                {p.birthday && <span className="text-[11px] text-slate-400">🎂 {+p.birthday.slice(3)}/{+p.birthday.slice(0, 2)}</span>}
+                {p.birthday && <span className="text-[11px] text-slate-400">🎂 {p.birthday}</span>}
               </div>
 
               <div className="mt-2.5 grid grid-cols-2 gap-1.5 text-[10px] bg-slate-950 rounded-xl p-2.5 border border-slate-800/80">
                 {SK.map((k) => (
                   <div key={k} className="flex justify-between items-center">
                     <span className="capitalize text-slate-400">{k}</span>
-                    <b className="text-amber-400 font-mono">{(p.skills || {})[k] || 3}/5</b>
+                    <b className="text-amber-400 font-mono">{(p.skills && p.skills[k]) || 3}/5</b>
                   </div>
                 ))}
               </div>
@@ -993,7 +1007,13 @@ function Roster({ players, onProfile }) {
               <div className="mt-2.5 pt-2 border-t border-slate-800 flex justify-between items-center text-xs">
                 <span>Victorias: <b className="text-emerald-400">{p.matchesWon || 0}</b> | MVPs: <b className="text-amber-400">{p.mvpCount || 0}</b></span>
                 {p.phone && (
-                  <a target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-emerald-400 font-bold hover:underline" href={`https://wa.me/${p.phone.replace(/\D/g, '')}`}>
+                  <a 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    onClick={(e) => e.stopPropagation()} 
+                    className="text-emerald-400 font-bold hover:underline" 
+                    href={`https://wa.me/${String(p.phone).replace(/\D/g, '')}`}
+                  >
                     WhatsApp 💬
                   </a>
                 )}
@@ -1001,6 +1021,9 @@ function Roster({ players, onProfile }) {
             </div>
           );
         })}
+        {list.length === 0 && (
+          <p className="text-slate-500 text-xs py-6 text-center col-span-2">No se encontraron jugadores.</p>
+        )}
       </div>
     </div>
   );
