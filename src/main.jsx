@@ -1181,7 +1181,7 @@ const when = (e) => new Date(`${e.date}T${e.time || '00:00'}`);
 // Plazo de pago: 12 horas antes de la pichanga. Pasado el plazo, quien no pagó (ni avisó su pago) pierde el cupo.
 const PAY_H = 12;
 const payDeadline = (e) => when(e).getTime() - (e.payHours || PAY_H) * 36e5;
-const payClosed = (e) => e.fee > 0 && Date.now() >= payDeadline(e);
+const payClosed = () => false;
 const effGoing = (e) => { const g = e.going || []; return payClosed(e) ? g.filter((id) => (e.paid || {})[id]) : g; };
 // Multa por llegar tarde: va al fondo del grupo
 const LATE_FEE = 2;
