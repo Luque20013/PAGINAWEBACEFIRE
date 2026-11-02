@@ -63,7 +63,7 @@ const POS = [
   { id: 'punta', label: 'Punta Receptor', s: 'PUN', c: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
   { id: 'central', label: 'Central', s: 'CEN', c: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' },
   { id: 'opuesto', label: 'Opuesto', s: 'OPU', c: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
-  { id: 'libero', label: 'Líbero', s: 'LIB', c: 'bg-rose-500/20 text-rose-400 border-rose-500/30' }
+  { id: 'Defensa', label: 'Defensa', s: 'LIB', c: 'bg-rose-500/20 text-rose-400 border-rose-500/30' }
 ];
 
 const SK = ['saque', 'armado', 'ataque', 'bloqueo', 'defensa'];
