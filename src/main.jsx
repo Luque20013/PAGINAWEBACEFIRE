@@ -1182,6 +1182,47 @@ const when = (e) => new Date(`${e.date}T${e.time || '00:00'}`);
 const PAY_H = 12;
 const payDeadline = (e) => when(e).getTime() - (e.payHours || PAY_H) * 36e5;
 const payClosed = () => false;
+// Control de invitados sin cuenta
+  const addGuest = async (ev, guestName) => {
+    const cleanName = guestName.trim();
+    if (!cleanName) return;
+    const guestId = `guest:${cleanName}`;
+    const currentGoing = ev.going || [];
+    if (currentGoing.includes(guestId)) {
+      alert('Ese nombre ya está en la lista');
+      return;
+    }
+    try {
+      await updateDoc(doc(db, 'events', ev.id), {
+        going: [...currentGoing, guestId]
+      });
+    } catch (err) {
+      console.error(err);
+      alert('Error al agregar invitado');
+    }
+  };
+
+  const removeGuest = async (ev, guestId) => {
+    try {
+      await updateDoc(doc(db, 'events', ev.id), {
+        going: (ev.going || []).filter(item => item !== guestId)
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+
+  const removeGuest = async (ev, guestId) => {
+    try {
+      await updateDoc(doc(db, 'events', ev.id), {
+        going: (ev.going || []).filter(item => item !== guestId)
+      });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
 const effGoing = (e) => { const g = e.going || []; return payClosed(e) ? g.filter((id) => (e.paid || {})[id]) : g; };
 // Multa por llegar tarde: va al fondo del grupo
 const LATE_FEE = 2;
@@ -1408,6 +1449,41 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
             <button onClick={() => toggle(ev)} className={inRaw ? 'w-full py-2.5 rounded-xl text-sm font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 transition' : 'btn-fire fire-on w-full py-2.5 rounded-xl text-sm shadow transition'}>
               {inRaw ? 'No voy (salir de la lista)' : full ? 'Entrar a lista de espera' : '¡Me anoto! 🔥'}
             </button>
+          {!past && isAdmin && (
+        <div className="mt-2 p-2.5 rounded-xl bg-slate-900/80 border border-amber-500/30">
+          <label className="block text-[11px] font-bold text-amber-400 mb-1.5">
+            ➕ Anotar jugador sin cuenta (chambeando / invitado)
+          </label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              id={`input-guest-${ev.id}`}
+              placeholder="Nombre o apodo..."
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-400"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addGuest(ev, e.currentTarget.value);
+                  e.currentTarget.value = '';
+                }
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const inp = document.getElementById(`input-guest-${ev.id}`);
+                if (inp && inp.value) {
+                  addGuest(ev, inp.value);
+                  inp.value = '';
+                }
+              }}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition"
+            >
+              Anotar
+            </button>
+          </div>
+        </div>
+      )}
       
 
           {mapsOf(ev) && (
