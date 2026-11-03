@@ -864,9 +864,9 @@ function Triangular({ tri, players, isAdmin }) {
       if (c[win] >= tri.max) { cur = [lose, w]; wait = win; } else { cur = [win, w]; wait = lose; }
       c[wait] = 0;
       const b = db.batch();
-      T[win].ids.forEach((id) => b.update(db.collection('players').doc(id), { matchesWon: FV.increment(1), setsWon: FV.increment(ws) }));
-      T[lose].ids.forEach((id) => b.update(db.collection('players').doc(id), { matchesLost: FV.increment(1) }));
-      if (mvp) b.update(db.collection('players').doc(mvp), { mvpCount: FV.increment(1) });
+      T[win].ids.filter((id) => !isGuest(id)).forEach((id) => b.update(db.collection('players').doc(id), { matchesWon: FV.increment(1), setsWon: FV.increment(ws) }));
+      T[lose].ids.filter((id) => !isGuest(id)).forEach((id) => b.update(db.collection('players').doc(id), { matchesLost: FV.increment(1) }));
+      if (mvp && !isGuest(mvp)) b.update(db.collection('players').doc(mvp), { mvpCount: FV.increment(1) });
       b.set(db.collection('matches').doc(), { teamA: T[x].ids, teamB: T[y].ids, scoreA: sa, scoreB: sb, mvp, createdAt: Date.now() });
       b.update(db.collection('triangulars').doc(tri.id), { games: FV.arrayUnion({ a: x, b: y, sa, sb, at: Date.now() }), cur, wait, consec: c });
       await b.commit();
@@ -884,7 +884,7 @@ function Triangular({ tri, players, isAdmin }) {
     <div className="rounded-xl border border-amber-500/40 bg-slate-950 p-2">
       <b className="text-sm">{T[i].name}</b>
       {T[i].cap && <p className="text-[10px] text-amber-400">👑 {(players.find((p) => p.id === T[i].cap) || {}).nickname}</p>}
-      <p className="text-[10px] text-slate-400">{T[i].ids.map((id) => (players.find((p) => p.id === id) || {}).nickname).filter(Boolean).join(', ')}</p>
+      <p className="text-[10px] text-slate-400">{T[i].ids.map((id) => (players.find((p) => p.id === id) || {}).nickname || (isGuest(id) ? guestName(id) + ' (inv.)' : null)).filter(Boolean).join(', ')}</p>
       <p className="text-[10px] mt-1 text-amber-400 font-bold">{consec[i] + 1 >= tri.max ? 'Si gana, descansa' : 'Si gana, se queda'}</p>
     </div>
   );
@@ -925,12 +925,14 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
   const [sel, setSel] = useState(initialEv || (upcoming[0] ? upcoming[0].id : 'all'));
   const ev = events.find((e) => e.id === sel);
   const opts = ev && !upcoming.find((e) => e.id === ev.id) ? [ev, ...upcoming] : upcoming;
-  const base = ev ? effGoing(ev).slice(0, ev.cap || 12).map((id) => players.find((p) => p.id === id)).filter(Boolean) : players;
+  const base = ev ? effGoing(ev).slice(0, ev.cap || 12).map((id) => players.find((p) => p.id === id) || (isGuest(id) ? { id, nickname: guestName(id) + ' (inv.)', avatar: '🎟️', position: 'invitado', skills: {}, isGuest: true } : null)).filter(Boolean) : players;
   const waiting = ev ? Math.max(0, effGoing(ev).length - (ev.cap || 12)) : 0;
 
   const [n, setN] = useState(2);
   const [res, setRes] = useState(null);
   const [ok, setOk] = useState(false);
+  const [man, setMan] = useState(false);
+  const [asg, setAsg] = useState({});
 
   const pool = base.filter((p) => !off.includes(p.id));
 
@@ -956,16 +958,37 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
         });
     });
 
+    // Invitados (sin posición): se reparten al final para igualar el número de jugadores
+    pool.filter((p) => !['armador', 'central', 'punta', 'opuesto', 'libero'].includes(p.position))
+      .sort((a, b) => ovr(b.skills) - ovr(a.skills))
+      .forEach((p) => {
+        T.sort((a, b) => (a.pl.length - b.pl.length) || (a.tot - b.tot));
+        T[0].pl.push(p);
+        T[0].tot += ovr(p.skills);
+      });
+
     setRes(T.sort((a, b) => a.name.localeCompare(b.name)));
   };
 
+  // Armado a mano: tú eliges en qué equipo va cada jugador
+  const genMan = () => {
+    const T = Array.from({ length: n }, (_, i) => ({
+      name: 'Equipo ' + String.fromCharCode(65 + i),
+      pl: pool.filter((p) => asg[p.id] === i),
+      tot: 0
+    }));
+    T.forEach((t) => { t.tot = t.pl.reduce((a, p) => a + ovr(p.skills), 0); });
+    T.manual = true;
+    setRes(T);
+  };
+
   const copy = (sendWa) => {
-    let t = '🏐 *ICEFIRE - EQUIPOS BALANCEADOS* 🏐\n' + (ev ? `📅 ${ev.title} · ${ev.date} ${ev.time}\n` : '') + '\n';
+    let t = '🏐 *ICEFIRE - ' + (res.manual ? 'EQUIPOS' : 'EQUIPOS BALANCEADOS') + '* 🏐\n' + (ev ? `📅 ${ev.title} · ${ev.date} ${ev.time}\n` : '') + '\n';
     res.forEach((e) => {
       const avg = (e.tot / (e.pl.length || 1)).toFixed(1);
       t += `🔥 *${e.name.toUpperCase()}* (Nivel: ⭐ ${avg})\n`;
       e.pl.forEach((p, i) => {
-        const badge = POS.find((x) => x.id === p.position)?.s || 'JUG';
+        const badge = p.isGuest ? 'INV' : (POS.find((x) => x.id === p.position)?.s || 'JUG');
         t += `  ${i + 1}. ${p.nickname} [${badge}]\n`;
       });
       t += '\n';
@@ -985,7 +1008,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
           <button onClick={() => setOff([])} className="text-xs text-slate-400 hover:text-slate-200 underline">Marcar todos</button>
         </div>
 
-        <select className={inp} value={sel} onChange={(e) => { setSel(e.target.value); setOff([]); setRes(null); }}>
+        <select className={inp} value={sel} onChange={(e) => { setSel(e.target.value); setOff([]); setRes(null); setAsg({}); }}>
           {opts.map((e) => <option key={e.id} value={e.id}>🏐 {e.title} · {e.date} {e.time} ({Math.min(effGoing(e).length, e.cap || 12)} convocados)</option>)}
           <option value="all">👥 Todos los jugadores (manual)</option>
         </select>
@@ -1016,6 +1039,38 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
             Balancear Equipos
           </button>
         </div>
+
+        <button onClick={() => setMan(!man)} className="w-full py-2 rounded-xl text-xs font-black bg-slate-800 text-amber-400 border border-amber-500/40">
+          {man ? 'Cerrar armado a mano' : '✋ Armar a mano (tú eliges quién va en cada equipo)'}
+        </button>
+        {man && (
+          <div className="space-y-1.5 enter">
+            <p className="text-xs text-slate-400">Toca la letra del equipo de cada jugador ({pool.filter((p) => !(asg[p.id] < n)).length} sin equipo). Usa los botones de arriba para elegir 2 o 3 equipos.</p>
+            <div className="max-h-72 overflow-y-auto space-y-1.5 p-1">
+              {pool.map((p) => (
+                <div key={p.id} className="flex items-center justify-between gap-2 bg-slate-950 rounded-xl px-3 py-1.5">
+                  <span className="text-sm truncate">{p.avatar} {p.nickname}</span>
+                  <span className="flex gap-1 shrink-0">
+                    {Array.from({ length: n }).map((_, i) => (
+                      <button key={i} onClick={() => setAsg((a) => { const x = { ...a }; if (x[p.id] === i) delete x[p.id]; else x[p.id] = i; return x; })} className={`w-8 h-7 rounded-lg text-xs font-black ${asg[p.id] === i ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>{String.fromCharCode(65 + i)}</button>
+                    ))}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div className={`grid gap-2 ${n === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+              {Array.from({ length: n }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-slate-800 p-2 text-center">
+                  <b className="text-xs">Equipo {String.fromCharCode(65 + i)}</b>
+                  <p className="text-[10px] text-slate-400">{pool.filter((p) => asg[p.id] === i).length} jugadores</p>
+                </div>
+              ))}
+            </div>
+            <button onClick={genMan} disabled={Array.from({ length: n }).some((_, i) => !pool.some((p) => asg[p.id] === i))} className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl disabled:opacity-40 shadow transition">
+              Usar estos equipos
+            </button>
+          </div>
+        )}
       </div>
 
       {isAdmin && onStartTri && <Draft pool={pool} onStartTri={onStartTri} />}
@@ -1033,7 +1088,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
                   {e.pl.map((p) => (
                     <div key={p.id} className="py-1.5 flex justify-between items-center text-sm">
                       <span className="text-slate-200">{p.avatar} {p.nickname}</span>
-                      <Badge id={p.position} />
+                      {p.isGuest ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-slate-700/40 text-slate-300 border-slate-600">INV</span> : <Badge id={p.position} />}
                     </div>
                   ))}
                 </div>
@@ -1196,9 +1251,9 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
 
   const evPay = (ev) => {
     const pays = ev.paid || {};
-    const pend = (ev.going || []).slice(0, ev.cap || 12).filter((id) => pays[id] !== 'ok').map((id) => ({ p: byId(id), st: pays[id] })).filter((x) => x.p);
+    const pend = (ev.going || []).slice(0, ev.cap || 12).filter((id) => pays[id] !== 'ok').map((id) => ({ id, p: byId(id), st: pays[id] })).filter((x) => x.p || isGuest(x.id));
     if (!pend.length) return `✅ *${ev.title}*: ¡todos los convocados ya pagaron! Gracias 🔥`;
-    return `💸 *FALTA PAGAR* · ${ev.title} (${ev.date})\n\nCuota: S/ ${ev.fee}\n💜 Yape a ${YAPE_NAME}: ${YAPE_NUM}\n\nFaltan (${pend.length}):\n${pend.map((x) => `• ${x.p.nickname}${x.st === 'pending' ? ' ⏳ (avisó, por confirmar)' : ''}`).join('\n')}\n\nYapea y toca "Ya yapeé" en la web para avisar 👇\n${evLink(ev.id)}`;
+    return `💸 *FALTA PAGAR* · ${ev.title} (${ev.date})\n\nCuota: S/ ${ev.fee}\n💜 Yape a ${YAPE_NAME}: ${YAPE_NUM}\n\nFaltan (${pend.length}):\n${pend.map((x) => `• ${x.p ? x.p.nickname : guestName(x.id) + ' (inv.)'}${x.st === 'pending' ? ' ⏳ (avisó, por confirmar)' : ''}`).join('\n')}\n\nYapea y toca "Ya yapeé" en la web para avisar 👇\n${evLink(ev.id)}`;
   };
 
   const evList = (ev) => {
@@ -1265,8 +1320,8 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
                     <span>🔥</span>
                     {p && <Av p={p} size="w-6 h-6" text="text-sm" />}
                     <b className="truncate">{p ? p.nickname : isGuest(id) ? guestName(id) + ' (inv.)' : 'Jugador'}</b>
-                    {isAdmin && isGuest(id) && <button onClick={(e) => { e.stopPropagation(); removeGuest(ev, id); }} className="ml-auto text-rose-400 text-xs font-bold">✕</button>}
-                    {ev.fee > 0 && !isGuest(id) && <span className="ml-auto text-xs">{st === 'ok' ? '✅' : st === 'pending' ? '⏳' : ''}</span>}
+                    {ev.fee > 0 && <span className="ml-auto text-xs">{st === 'ok' ? '✅' : st === 'pending' ? '⏳' : ''}</span>}
+                    {isAdmin && isGuest(id) && <button onClick={(e) => { e.stopPropagation(); removeGuest(ev, id); }} className="ml-1 text-rose-400 text-xs font-bold">✕</button>}
                   </div>
                 ) : (
                   <div key={i} className="slot slot-off"><span className="slot-n">{i + 1}</span><span>▫️</span><span>libre</span></div>
@@ -1300,19 +1355,20 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
             </p>
           )}
 
-          {isAdmin && Date.now() >= when(ev).getTime() && g.length > 0 && (
+          {isAdmin && g.length > 0 && (
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 space-y-1.5">
               <div className="flex items-center justify-between gap-2">
-                <p className="text-[11px] font-bold text-amber-400">📋 Asistencia y tardanzas · multa S/ {lateFeeOf(ev)} al fondo (solo admins)</p>
-                <button onClick={() => allAtt(ev, g.slice(0, ev.cap || 12).filter((id) => byId(id)))} className="px-2 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold whitespace-nowrap">✅ Todos asistieron</button>
+                <p className="text-[11px] font-bold text-amber-400">📋 Marcar asistencia · multa por tardanza S/ {lateFeeOf(ev)} al fondo (solo admins)</p>
+                <button onClick={() => allAtt(ev, g.slice(0, ev.cap || 12))} className="px-2 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold whitespace-nowrap">✅ Todos asistieron</button>
               </div>
               <div className="space-y-1">
                 {g.slice(0, ev.cap || 12).map((id) => {
-                  const p = byId(id); if (!p) return null;
+                  const p = byId(id); if (!p && !isGuest(id)) return null;
+                  const nm = p ? p.nickname : guestName(id) + ' (inv.)';
                   const late = !!(ev.late || {})[id], lp = (ev.latePaid || {})[id] === 'ok', att = !!(ev.att || {})[id];
                   return (
                     <div key={id} className="flex items-center justify-between text-xs bg-slate-900 rounded-lg px-2 py-1.5">
-                      <span>{att ? '✅ ' : ''}{p.nickname}{late ? <b className={lp ? ' text-emerald-400' : ' text-rose-400'}>{lp ? ' · multa cobrada ✅' : ` · debe S/ ${lateFeeOf(ev)}`}</b> : ''}</span>
+                      <span>{att ? '✅ ' : ''}{nm}{late ? <b className={lp ? ' text-emerald-400' : ' text-rose-400'}>{lp ? ' · multa cobrada ✅' : ` · debe S/ ${lateFeeOf(ev)}`}</b> : ''}</span>
                       <span className="flex gap-1">
                         <button onClick={() => toggleAtt(ev, id)} className={`px-2 py-0.5 rounded-lg font-bold ${att ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{att ? 'Asistió' : 'Faltó'}</button>
                         {late && <button onClick={() => setLatePaid(ev, id, !lp)} className="px-2 py-0.5 rounded-lg bg-emerald-600 font-bold">{lp ? '↺' : 'Cobrada'}</button>}
@@ -1428,10 +1484,10 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
                   <p className="text-[11px] font-bold text-amber-400">Control de cobros (solo admins pueden poner el ✓):</p>
                   {g.map((id) => {
                     const p = byId(id), st = pays[id];
-                    if (!p) return null;
+                    if (!p && !isGuest(id)) return null;
                     return (
                       <div key={id} className="flex items-center justify-between text-xs bg-slate-950 rounded-xl px-2.5 py-1.5 border border-slate-800">
-                        <span>{p.avatar} {p.nickname}</span>
+                        <span>{p ? `${p.avatar} ${p.nickname}` : `🎟️ ${guestName(id)} (inv.)`}</span>
                         <div className="flex items-center gap-2">
                           <span className={st === 'ok' ? 'text-emerald-400 font-bold' : st === 'pending' ? 'text-amber-400 font-bold' : 'text-slate-500'}>
                             {st === 'ok' ? 'Pagado' : st === 'pending' ? 'Avisó pago' : 'Debe'}
@@ -1699,6 +1755,8 @@ function MatchModal({ players, init, onClose }) {
     setSide(nx);
   };
 
+  const guestRows = [...(init.a || []), ...(init.b || [])].filter(isGuest).map((id) => ({ id, nickname: guestName(id) + ' (inv.)', avatar: '🎟️' }));
+  const rows = [...players, ...guestRows];
   const A = Object.keys(side).filter((i) => side[i] === 'A');
   const B = Object.keys(side).filter((i) => side[i] === 'B');
 
@@ -1710,11 +1768,11 @@ function MatchModal({ players, init, onClose }) {
     const winA = sa > sb, W = winA ? A : B, L = winA ? B : A, ws = winA ? sa : sb;
     const batch = db.batch();
 
-    W.forEach((id) => batch.update(db.collection('players').doc(id), {
+    W.filter((id) => !isGuest(id)).forEach((id) => batch.update(db.collection('players').doc(id), {
       matchesWon: FV.increment(1),
       setsWon: FV.increment(ws)
     }));
-    L.forEach((id) => batch.update(db.collection('players').doc(id), {
+    L.filter((id) => !isGuest(id)).forEach((id) => batch.update(db.collection('players').doc(id), {
       matchesLost: FV.increment(1)
     }));
     if (mvp) {
@@ -1730,7 +1788,7 @@ function MatchModal({ players, init, onClose }) {
       createdAt: Date.now()
     });
 
-    const names = (ids) => ids.map((i) => players.find((p) => p.id === i)?.nickname || 'Jugador').join(', ');
+    const names = (ids) => ids.map((i) => players.find((p) => p.id === i)?.nickname || (isGuest(i) ? guestName(i) + ' (inv.)' : 'Jugador')).join(', ');
     const m = players.find((p) => p.id === mvp);
 
     batch.set(db.collection('posts').doc(), {
@@ -1762,7 +1820,7 @@ function MatchModal({ players, init, onClose }) {
         </p>
 
         <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
-          {players.map((p) => {
+          {rows.map((p) => {
             const sideCode = side[p.id];
             return (
               <button type="button" key={p.id} onClick={() => cyc(p.id)} className={`p-2 rounded-xl border text-left flex justify-between items-center transition ${sideCode === 'A' ? 'bg-blue-600/25 border-blue-500 text-blue-200' : sideCode === 'B' ? 'bg-rose-600/25 border-rose-500 text-rose-200' : 'bg-slate-950 border-slate-800 text-slate-500'}`}>
