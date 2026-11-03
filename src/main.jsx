@@ -626,7 +626,16 @@ function Feed({ me, posts, players, isAdmin, onProfile, events, onGo, onTab }) {
 }
 
 // ===== TABLA DE POSICIONES Y RANKING =====
-function Ranking({ players, onProfile }) {
+function Ranking({ players, onProfile, isAdmin }) {
+  const [ed, setEd] = useState(null); const [v, setV] = useState({ g: 0, p: 0, s: 0, m: 0 }); const [busy, setBusy] = useState(false);
+  const openEd = (p) => { setV({ g: p.matchesWon || 0, p: p.matchesLost || 0, s: p.setsWon || 0, m: p.mvpCount || 0 }); setEd(p.id); };
+  const saveEd = async (p) => {
+    setBusy(true);
+    const n = (x) => Math.max(0, Math.floor(+x || 0));
+    try { await db.collection('players').doc(p.id).update({ matchesWon: n(v.g), matchesLost: n(v.p), setsWon: n(v.s), mvpCount: n(v.m) }); setEd(null); }
+    catch (e) { alert('No se pudo guardar: ' + e.message); }
+    setBusy(false);
+  };
   const rows = useMemo(() => [...players].sort((a, b) => {
     const ta = (a.matchesWon || 0) + (a.matchesLost || 0);
     const tb = (b.matchesWon || 0) + (b.matchesLost || 0);
@@ -665,7 +674,8 @@ function Ranking({ players, onProfile }) {
           const t = (p.matchesWon || 0) + (p.matchesLost || 0);
           const winRate = t ? Math.round(((p.matchesWon || 0) / t) * 100) : 0;
           return (
-            <div key={p.id} onClick={() => onProfile(p.id)} className="p-3 flex justify-between items-center text-xs hover:bg-slate-800/30 transition cursor-pointer">
+            <React.Fragment key={p.id}>
+            <div onClick={() => onProfile(p.id)} className="p-3 flex justify-between items-center text-xs hover:bg-slate-800/30 transition cursor-pointer">
               <div className="flex items-center gap-2.5">
                 <span className={`w-6 text-center font-bold text-sm ${i === 0 ? 'text-amber-400' : i === 1 ? 'text-slate-300' : i === 2 ? 'text-amber-600' : 'text-slate-500'}`}>
                   {i === 0 ? '👑' : i + 1}
@@ -689,8 +699,24 @@ function Ranking({ players, onProfile }) {
                 <span className="text-amber-400 font-bold w-10 text-right">{winRate}%</span>
                 <span className="w-6 text-right text-slate-300">{p.setsWon || 0}s</span>
                 <span className="w-8 text-right text-amber-300 font-bold">⭐{p.mvpCount || 0}</span>
+                {isAdmin && <button title="Editar (solo admins)" onClick={(e) => { e.stopPropagation(); ed === p.id ? setEd(null) : openEd(p); }} className="ml-1 px-1.5 py-0.5 rounded-lg bg-slate-800 text-amber-400 text-xs">✏️</button>}
               </div>
             </div>
+            {isAdmin && ed === p.id && (
+              <div className="p-3 bg-slate-950/70 border-t border-slate-800 space-y-2">
+                <p className="text-[11px] font-bold text-amber-400">✏️ Editar estadísticas de {p.nickname} (solo admins)</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {[['g', 'Ganados'], ['p', 'Perdidos'], ['s', 'Sets'], ['m', 'MVP']].map(([k, l]) => (
+                    <label key={k} className="text-[10px] text-slate-400">{l}<input type="number" min="0" className={inp + ' mt-1 text-center'} value={v[k]} onChange={(e) => setV({ ...v, [k]: e.target.value })} /></label>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button disabled={busy} onClick={() => saveEd(p)} className="btn-fire flex-1 py-2 rounded-xl text-xs font-black disabled:opacity-50">{busy ? 'Guardando...' : 'Guardar'}</button>
+                  <button onClick={() => setEd(null)} className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 text-slate-300">Cancelar</button>
+                </div>
+              </div>
+            )}
+            </React.Fragment>
           );
         })}
       </div>
@@ -1162,8 +1188,10 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
 
   const toggleLate = (ev, uid) => {
     const on = !!(ev.late || {})[uid];
-    db.collection('events').doc(ev.id).update(on ? { ['late.' + uid]: FV.delete(), ['latePaid.' + uid]: FV.delete() } : { ['late.' + uid]: true });
+    db.collection('events').doc(ev.id).update(on ? { ['late.' + uid]: FV.delete(), ['latePaid.' + uid]: FV.delete() } : { ['late.' + uid]: true, ['att.' + uid]: true });
   };
+  const toggleAtt = (ev, uid) => db.collection('events').doc(ev.id).update({ ['att.' + uid]: (ev.att || {})[uid] ? FV.delete() : true });
+  const allAtt = (ev, ids) => db.collection('events').doc(ev.id).update(Object.fromEntries(ids.map((id) => ['att.' + id, true])));
   const setLatePaid = (ev, uid, v) => db.collection('events').doc(ev.id).update({ ['latePaid.' + uid]: v ? 'ok' : FV.delete() });
 
   const evPay = (ev) => {
@@ -1274,15 +1302,19 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
 
           {isAdmin && Date.now() >= when(ev).getTime() && g.length > 0 && (
             <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 space-y-1.5">
-              <p className="text-[11px] font-bold text-amber-400">⏱ Tardanzas · multa S/ {lateFeeOf(ev)} al fondo (solo admins)</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] font-bold text-amber-400">📋 Asistencia y tardanzas · multa S/ {lateFeeOf(ev)} al fondo (solo admins)</p>
+                <button onClick={() => allAtt(ev, g.slice(0, ev.cap || 12).filter((id) => byId(id)))} className="px-2 py-1 rounded-lg bg-emerald-600/20 border border-emerald-500/40 text-emerald-300 text-[10px] font-bold whitespace-nowrap">✅ Todos asistieron</button>
+              </div>
               <div className="space-y-1">
                 {g.slice(0, ev.cap || 12).map((id) => {
                   const p = byId(id); if (!p) return null;
-                  const late = !!(ev.late || {})[id], lp = (ev.latePaid || {})[id] === 'ok';
+                  const late = !!(ev.late || {})[id], lp = (ev.latePaid || {})[id] === 'ok', att = !!(ev.att || {})[id];
                   return (
                     <div key={id} className="flex items-center justify-between text-xs bg-slate-900 rounded-lg px-2 py-1.5">
-                      <span>{p.nickname}{late ? <b className={lp ? ' text-emerald-400' : ' text-rose-400'}>{lp ? ' · multa cobrada ✅' : ` · debe S/ ${lateFeeOf(ev)}`}</b> : ''}</span>
+                      <span>{att ? '✅ ' : ''}{p.nickname}{late ? <b className={lp ? ' text-emerald-400' : ' text-rose-400'}>{lp ? ' · multa cobrada ✅' : ` · debe S/ ${lateFeeOf(ev)}`}</b> : ''}</span>
                       <span className="flex gap-1">
+                        <button onClick={() => toggleAtt(ev, id)} className={`px-2 py-0.5 rounded-lg font-bold ${att ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'}`}>{att ? 'Asistió' : 'Faltó'}</button>
                         {late && <button onClick={() => setLatePaid(ev, id, !lp)} className="px-2 py-0.5 rounded-lg bg-emerald-600 font-bold">{lp ? '↺' : 'Cobrada'}</button>}
                         <button onClick={() => toggleLate(ev, id)} className={`px-2 py-0.5 rounded-lg font-bold ${late ? 'bg-slate-700 text-slate-300' : 'bg-rose-600/80 text-white'}`}>{late ? 'Quitar' : 'Llegó tarde'}</button>
                       </span>
@@ -1385,9 +1417,11 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
                   Quitar de la lista a los {raw.length - g.length} que no pagaron ✂️
                 </button>
               )}
-              <p className="text-xs text-slate-400">
-                Recaudado: <b className="text-emerald-400">S/ {ok * ev.fee}</b> de S/ {g.length * ev.fee}
-              </p>
+              {isAdmin && (
+                <p className="text-xs text-slate-400">
+                  Recaudado: <b className="text-emerald-400">S/ {ok * ev.fee}</b> de S/ {g.length * ev.fee}
+                </p>
+              )}
 
               {canManage && g.length > 0 && (
                 <div className="space-y-1.5 pt-1">
@@ -1825,7 +1859,54 @@ function ProfileHistory({ id, players }) {
   );
 }
 
-function ProfilePage({ id, me, players, posts, isAdmin, onProfile, onClose, onMessage }) {
+// ===== Asistencias: calendario por jugador =====
+function AttendanceCard({ id, events }) {
+  const [m, setM] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const evs = events.filter((e) => e.date);
+  const status = (e) => {
+    const isIn = (e.going || []).includes(id), went = !!(e.att || {})[id];
+    const over = when(e).getTime() + 3 * 36e5 < Date.now(), taken = Object.keys(e.att || {}).length > 0;
+    if (went) return 'ok';
+    if (isIn && over) return taken ? 'miss' : 'pend';
+    if (isIn) return 'soon';
+    return 'other';
+  };
+  const ok = evs.filter((e) => status(e) === 'ok').length, miss = evs.filter((e) => status(e) === 'miss').length;
+  const pct = ok + miss ? Math.round((ok / (ok + miss)) * 100) : null;
+  const byDay = {};
+  evs.forEach((e) => { const s = status(e); const prev = byDay[e.date]; const rank = { ok: 4, miss: 3, soon: 2, pend: 1, other: 0 }; if (!prev || rank[s] > rank[prev]) byDay[e.date] = s; });
+  const y = m.getFullYear(), mo = m.getMonth();
+  const offset = (new Date(y, mo, 1).getDay() + 6) % 7, days = new Date(y, mo + 1, 0).getDate();
+  const cls = { ok: 'bg-emerald-500/25 border border-emerald-500/50 text-emerald-300 font-black', miss: 'bg-rose-500/20 border border-rose-500/40 text-rose-300 font-black', soon: 'bg-amber-500/20 border border-amber-500/40 text-amber-300 font-black', pend: 'bg-slate-700/60 border border-slate-600 text-slate-200 font-bold', other: 'bg-slate-800/70 border border-slate-700 text-slate-300' };
+  const key = (d) => `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  return (
+    <div className={card + ' space-y-3'}>
+      <div className="flex items-center justify-between">
+        <b className="text-sm">📅 Asistencias</b>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setM(new Date(y, mo - 1, 1))} className="w-7 h-7 rounded-lg bg-slate-800 text-slate-300">‹</button>
+          <span className="text-xs font-bold capitalize w-28 text-center">{m.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}</span>
+          <button onClick={() => setM(new Date(y, mo + 1, 1))} className="w-7 h-7 rounded-lg bg-slate-800 text-slate-300">›</button>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-xl bg-slate-950/60 p-2"><b className="num text-lg text-emerald-400">{ok}</b><p className="text-[10px] text-slate-400">Asistió</p></div>
+        <div className="rounded-xl bg-slate-950/60 p-2"><b className="num text-lg text-rose-400">{miss}</b><p className="text-[10px] text-slate-400">Faltó</p></div>
+        <div className="rounded-xl bg-slate-950/60 p-2"><b className="num text-lg text-amber-400">{pct === null ? '–' : pct + '%'}</b><p className="text-[10px] text-slate-400">Asistencia</p></div>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-slate-500 font-bold">{['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <span key={i}>{d}</span>)}</div>
+      <div className="grid grid-cols-7 gap-1">
+        {Array.from({ length: offset }).map((_, i) => <span key={'o' + i} />)}
+        {Array.from({ length: days }).map((_, i) => { const st = byDay[key(i + 1)]; return <div key={i} className={`h-9 rounded-lg flex items-center justify-center text-xs ${st ? cls[st] : 'text-slate-600'}`}>{i + 1}</div>; })}
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
+        <span><b className="text-emerald-400">■</b> Asistió</span><span><b className="text-rose-400">■</b> Faltó</span><span><b className="text-amber-400">■</b> Anotado, falta jugar</span><span><b className="text-slate-300">■</b> Sin pasar lista / no anotado</span>
+      </div>
+    </div>
+  );
+}
+
+function ProfilePage({ id, me, players, posts, isAdmin, events, onProfile, onClose, onMessage }) {
   const p = players.find((x) => x.id === id);
   const [busy, setBusy] = useState(false);
   const [ed, setEd] = useState(null);
@@ -1936,6 +2017,8 @@ function ProfilePage({ id, me, players, posts, isAdmin, onProfile, onClose, onMe
           </div>
         ))}
       </div>
+
+      <AttendanceCard id={p.id} events={events || []} />
 
       <ProfileHistory id={p.id} players={players} />
 
@@ -2242,7 +2325,7 @@ function Main({ user }) {
       {/* Cabecera */}
       <header className="hdr sticky top-0 z-40 -mx-3 -mt-3 px-3 py-2.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5">
         <div className="flex items-center gap-2 shrink-0">
-          <img src={LOGO_ICON} alt="" className="af-mark" style={{ objectFit: 'cover', background: 'none' }} /><span className="logo text-2xl">Ace<span className="fire">Fire</span></span>
+          <img src={LOGO_ICON} alt="" className="af-mark" style={{ objectFit: 'cover', background: 'none' }} /><span className="logo text-2xl">Ice<span className="fire">Fire</span></span>
           {isAdmin && <span className="hidden sm:inline whitespace-nowrap text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">Admin</span>}
         </div>
         <div className="flex items-center gap-1.5 ml-auto">
@@ -2271,9 +2354,9 @@ function Main({ user }) {
 
       {/* Contenedor de Vistas */}
       <main className="enter">
-        {profile && <ProfilePage id={profile} me={me} players={players} posts={posts} isAdmin={isAdmin} onProfile={setProfile} onClose={() => setProfile(null)} onMessage={(id) => { setProfile(null); setPeer(id); setTab('chat'); }} />}
+        {profile && <ProfilePage id={profile} me={me} players={players} posts={posts} isAdmin={isAdmin} events={events} onProfile={setProfile} onClose={() => setProfile(null)} onMessage={(id) => { setProfile(null); setPeer(id); setTab('chat'); }} />}
         {!profile && tab === 'feed' && <Feed me={me} posts={posts} players={players} isAdmin={isAdmin} onProfile={setProfile} events={events} onGo={() => setTab('events')} onTab={(t) => { setTab(t); window.scrollTo({ top: 0 }); }} />}
-        {!profile && tab === 'rank' && <Ranking players={players} onProfile={setProfile} />}
+        {!profile && tab === 'rank' && <Ranking players={players} onProfile={setProfile} isAdmin={isAdmin} />}
         {!profile && tab === 'roster' && <Roster players={players} onProfile={setProfile} />}
         {!profile && tab === 'teams' && <><Triangular tri={tri} players={players} isAdmin={isAdmin} /><Teams key={teamEv || 'x'} players={players} events={events} initialEv={teamEv} isAdmin={isAdmin} onRegister={(a, b) => setModal({ a, b })} onStartTri={startTri} /></>}
         {!profile && tab === 'polos' && <Polos me={me} isAdmin={isAdmin} />}
