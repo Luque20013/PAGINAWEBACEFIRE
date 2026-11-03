@@ -932,6 +932,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
   const [res, setRes] = useState(null);
   const [ok, setOk] = useState(false);
   const [man, setMan] = useState(false);
+  const [autoWa, setAutoWa] = useState(true);
   const [asg, setAsg] = useState({});
 
   const pool = base.filter((p) => !off.includes(p.id));
@@ -967,7 +968,9 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
         T[0].tot += ovr(p.skills);
       });
 
-    setRes(T.sort((a, b) => a.name.localeCompare(b.name)));
+    const sorted = T.sort((a, b) => a.name.localeCompare(b.name));
+    setRes(sorted);
+    if (autoWa) sendTeams(sorted, true);
   };
 
   // Armado a mano: tú eliges en qué equipo va cada jugador
@@ -980,25 +983,38 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
     T.forEach((t) => { t.tot = t.pl.reduce((a, p) => a + ovr(p.skills), 0); });
     T.manual = true;
     setRes(T);
+    if (autoWa) sendTeams(T, true);
   };
 
-  const copy = (sendWa) => {
-    let t = '🏐 *ICEFIRE - ' + (res.manual ? 'EQUIPOS' : 'EQUIPOS BALANCEADOS') + '* 🏐\n' + (ev ? `📅 ${ev.title} · ${ev.date} ${ev.time}\n` : '') + '\n';
-    res.forEach((e) => {
+  // Texto del mensaje de equipos (R = lista de equipos)
+  const teamText = (R) => {
+    let t = '🏐 *ICEFIRE · ' + (R.manual ? 'EQUIPOS' : 'EQUIPOS BALANCEADOS') + '* 🏐\n';
+    if (ev) t += `\n📅 *${ev.title}*\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}${placeTxt(ev) ? `\n📍 ${placeTxt(ev)}` : ''}\n`;
+    t += '\n';
+    R.forEach((e, ti) => {
       const avg = (e.tot / (e.pl.length || 1)).toFixed(1);
-      t += `🔥 *${e.name.toUpperCase()}* (Nivel: ⭐ ${avg})\n`;
+      t += `${teamIcon(ti)} *${e.name.toUpperCase()}* (⭐ ${avg})\n`;
       e.pl.forEach((p, i) => {
         const badge = p.isGuest ? 'INV' : (POS.find((x) => x.id === p.position)?.s || 'JUG');
-        t += `  ${i + 1}. ${p.nickname} [${badge}]\n`;
+        t += `  ${numEmo(i + 1)} ${p.nickname} [${badge}]\n`;
       });
       t += '\n';
     });
-    const full = t + '⏰ Llegar 15 min antes para calentar y armar la cancha.\n\n🔥 Ranking y resultados: ' + SITE_URL;
+    if (ev && ev.fee > 0) t += `💸 Si aún no pagaste: yapea S/ ${ev.fee} a ${YAPE_NAME} (${YAPE_NUM}) hasta el ${fmtDL(ev)}.\n`;
+    if (ev) t += `⏱ Llegar tarde = multa de S/ ${lateFeeOf(ev)} al fondo del grupo.\n`;
+    t += '⏰ Llegar 15 min antes para calentar y armar la cancha.\n\n🔥 Ranking y resultados: ' + SITE_URL;
+    return t;
+  };
+
+  const sendTeams = (R, sendWa) => {
+    const full = teamText(R);
     if (navigator.clipboard) navigator.clipboard.writeText(full).catch(() => {});
     if (sendWa === true) waShare(full);
     setOk(true);
     setTimeout(() => setOk(false), 2500);
   };
+
+  const copy = (sendWa) => sendTeams(res, sendWa);
 
   return (
     <div className="space-y-3">
@@ -1040,6 +1056,10 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
           </button>
         </div>
 
+        <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+          <input type="checkbox" checked={autoWa} onChange={(e) => setAutoWa(e.target.checked)} className="accent-emerald-500" />
+          📲 Abrir WhatsApp con los equipos apenas se creen
+        </label>
         <button onClick={() => setMan(!man)} className="w-full py-2 rounded-xl text-xs font-black bg-slate-800 text-amber-400 border border-amber-500/40">
           {man ? 'Cerrar armado a mano' : '✋ Armar a mano (tú eliges quién va en cada equipo)'}
         </button>
@@ -1165,19 +1185,34 @@ const left = (e) => {
   return d < 0 ? 'Ya pasó' : d === 0 ? '¡Es hoy!' : d === 1 ? 'Es mañana' : `Faltan ${d} días`;
 };
 
-const evText = (ev) => {
-  const g = effGoing(ev), cap = ev.cap || 12, pl = placeTxt(ev), mp = mapsOf(ev);
-  return `🏐 *${ev.title}*\n🗓 ${ev.date} · 🕗 ${ev.time}${pl ? `\n📍 ${pl}` : ''}${mp ? `\n🗺 Google Maps: ${mp}` : ''}${!pl && !mp ? '\n📍 Lugar por confirmar' : ''}${ev.fee > 0 ? `\n💰 Cuota: S/ ${ev.fee}\n💜 Yape a ${YAPE_NAME}: ${YAPE_NUM}` : ''}\n✅ ${Math.min(g.length, cap)}/${cap} confirmados\n\n🔥 Entra a la web y anótate aquí 👇\n${evLink(ev.id)}`;
+// Fecha y hora bonitas para los mensajes: "Sábado 8 de noviembre · 8:00 p. m."
+const fmtDay = (ev) => { const t = when(ev).toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' }); return t.charAt(0).toUpperCase() + t.slice(1); };
+const fmtHour = (ev) => when(ev).toLocaleTimeString('es-PE', { hour: 'numeric', minute: '2-digit' });
+// Números con emoji (1️⃣ 2️⃣ ... 🔟) y fuego/hielo alternados para las listas
+const numEmo = (n) => (n === 10 ? '🔟' : String(n).split('').map((d) => d + '\uFE0F\u20E3').join(''));
+const fireIce = (i) => (i % 2 === 0 ? '🔥' : '❄️');
+const teamIcon = (i) => ['🔥', '❄️', '⚡'][i] || '🏐';
+// Bloque de cuota + plazo de pago (12 h antes del partido). Solo si la pichanga tiene cuota.
+const payLine = (ev) => ev.fee > 0
+  ? `\n💰 Cuota: *S/ ${ev.fee}*\n💜 Yape a ${YAPE_NAME}: *${YAPE_NUM}*\n⏰ Paga hasta el *${fmtDL(ev)}* (${ev.payHours || PAY_H} h antes del partido)`
+  : '';
+const placeLines = (ev) => {
+  const pl = placeTxt(ev), mp = mapsOf(ev);
+  return `${pl ? `\n📍 ${pl}` : ''}${mp ? `\n🗺 ${mp}` : ''}${!pl && !mp ? '\n📍 Lugar por confirmar' : ''}`;
 };
 
-const evOpen = (ev) => '🔥 *¡YA ESTÁ ABIERTA LA LISTA!* Anótate a la pichanga 🏐\n\n' + evText(ev);
+const evText = (ev) => {
+  const g = effGoing(ev), cap = ev.cap || 12, libres = Math.max(0, cap - g.length);
+  return `🏐 *${ev.title}*\n━━━━━━━━━━━━\n🗓 ${fmtDay(ev)}\n🕗 ${fmtHour(ev)}${placeLines(ev)}${payLine(ev)}\n\n✅ ${Math.min(g.length, cap)}/${cap} confirmados${libres > 0 ? ` · quedan ${libres} cupos` : ' · lista llena'}\n\n🔥 Anótate en la web 👇\n${evLink(ev.id)}`;
+};
+
+const evOpen = (ev) => '🔥 *¡YA ESTÁ ABIERTA LA LISTA!*\nAnótate a la pichanga 🏐\n\n' + evText(ev);
 const evSpots = (ev) => {
   const cap = ev.cap || 12, left = cap - effGoing(ev).length;
   const head = left > 0
-    ? `⚠️ *¡CUPOS LIMITADOS!* Quedan solo ${left} de ${cap} lugares 🏐`
-    : `🚫 *¡LISTA LLENA!* Ya están los ${cap} cupos. Aún puedes entrar a la lista de espera 🏐`;
-  const mp = mapsOf(ev), pl = placeTxt(ev);
-  return `${head}\n\n*${ev.title}*\n🗓 ${ev.date} · 🕗 ${ev.time}${pl ? `\n📍 ${pl}` : ''}${mp ? `\n🗺 ${mp}` : ''}\n\n${left > 0 ? 'Anótate antes de que se llene 👇' : 'Entra a la lista de espera 👇'}\n${evLink(ev.id)}`;
+    ? `⚠️ *¡CUPOS LIMITADOS!*\nQuedan solo ${left} de ${cap} lugares 🏐`
+    : `🚫 *¡LISTA LLENA!*\nYa están los ${cap} cupos. Aún puedes entrar a la lista de espera 🏐`;
+  return `${head}\n\n*${ev.title}*\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}${placeLines(ev)}${payLine(ev)}\n\n${left > 0 ? 'Anótate antes de que se llene 👇' : 'Entra a la lista de espera 👇'}\n${evLink(ev.id)}`;
 };
 
 function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
@@ -1252,19 +1287,21 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
   const evPay = (ev) => {
     const pays = ev.paid || {};
     const pend = (ev.going || []).slice(0, ev.cap || 12).filter((id) => pays[id] !== 'ok').map((id) => ({ id, p: byId(id), st: pays[id] })).filter((x) => x.p || isGuest(x.id));
-    if (!pend.length) return `✅ *${ev.title}*: ¡todos los convocados ya pagaron! Gracias 🔥`;
-    return `💸 *FALTA PAGAR* · ${ev.title} (${ev.date})\n\nCuota: S/ ${ev.fee}\n💜 Yape a ${YAPE_NAME}: ${YAPE_NUM}\n\nFaltan (${pend.length}):\n${pend.map((x) => `• ${x.p ? x.p.nickname : guestName(x.id) + ' (inv.)'}${x.st === 'pending' ? ' ⏳ (avisó, por confirmar)' : ''}`).join('\n')}\n\nYapea y toca "Ya yapeé" en la web para avisar 👇\n${evLink(ev.id)}`;
+    if (!pend.length) return `✅ *${ev.title}*\n¡Todos los convocados ya pagaron! Gracias 🔥`;
+    const vencido = Date.now() > payDeadline(ev);
+    return `💸 *RECORDATORIO DE PAGO*\n🏐 ${ev.title}\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}\n\n💰 Cuota: *S/ ${ev.fee}*\n💜 Yape a ${YAPE_NAME}: *${YAPE_NUM}*\n${vencido ? '⚠️ El plazo ya venció, ¡yapea hoy mismo!' : `⏰ Plazo: hasta el *${fmtDL(ev)}* (${ev.payHours || PAY_H} h antes)`}\n\n⏳ *Faltan pagar (${pend.length}):*\n${pend.map((x) => `• ${x.p ? x.p.nickname : guestName(x.id) + ' (inv.)'}${x.st === 'pending' ? ' ⏳ (avisó, por confirmar)' : ''}`).join('\n')}\n\nYapea y toca "Ya yapeé" en la web 👇\n${evLink(ev.id)}`;
   };
 
   const evList = (ev) => {
     const cap = ev.cap || 12, g = effGoing(ev);
-    const rows = Array.from({ length: cap }).map((_, i) => { const p = g[i] ? byId(g[i]) : null; return `${i + 1}. ${g[i] ? '🔥 ' + (p ? p.nickname : isGuest(g[i]) ? guestName(g[i]) + ' (inv.)' : 'Jugador') : '▫️ libre'}`; });
-    const wait = g.slice(cap).map((id, i) => { const p = byId(id); return `${cap + i + 1}. ⏳ ${p ? p.nickname : isGuest(id) ? guestName(id) + ' (inv.)' : 'Jugador'}`; });
-    return `🏐 *${ev.title}*\n🗓 ${ev.date} · 🕗 ${ev.time}\n\n📋 *LISTA (${Math.min(g.length, cap)}/${cap})*\n${rows.join('\n')}${wait.length ? `\n\n⏳ *Lista de espera*\n${wait.join('\n')}` : ''}\n\n🔥 Anótate aquí 👇\n${evLink(ev.id)}`;
+    const nm = (id) => { const p = byId(id); return p ? p.nickname : isGuest(id) ? guestName(id) + ' (inv.)' : 'Jugador'; };
+    const rows = Array.from({ length: cap }).map((_, i) => `${numEmo(i + 1)} ${g[i] ? fireIce(i) + ' ' + nm(g[i]) : '▫️ libre'}`);
+    const wait = g.slice(cap).map((id, i) => `${numEmo(cap + i + 1)} ⏳ ${nm(id)}`);
+    return `🏐 *${ev.title}*\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}${placeTxt(ev) ? `\n📍 ${placeTxt(ev)}` : ''}\n\n🔥❄️ *LISTA (${Math.min(g.length, cap)}/${cap})* ❄️🔥\n${rows.join('\n')}${wait.length ? `\n\n⏳ *Lista de espera*\n${wait.join('\n')}` : ''}${ev.fee > 0 ? `\n\n💰 Cuota S/ ${ev.fee} · ⏰ paga hasta el ${fmtDL(ev)}` : ''}\n\n🔥 Anótate aquí 👇\n${evLink(ev.id)}`;
   };
 
   const payYape = (ev) => {
-    const msg = `Hola ${YAPE_NAME} 👋 Soy ${me.nickname} (${me.name}). Ya yapeé S/ ${ev.fee} por la pichanga "${ev.title}" del ${ev.date}. ¿Me confirmas el pago? 🏐\nVer pichanga: ${evLink(ev.id)}`;
+    const msg = `Hola ${YAPE_NAME} 👋\nSoy ${me.nickname} (${me.name}). Ya yapeé *S/ ${ev.fee}* por la pichanga "${ev.title}" del ${fmtDay(ev)}.\n¿Me confirmas el pago? 🏐\n\nVer pichanga: ${evLink(ev.id)}`;
     window.open('https://wa.me/' + YAPE_WA + '?text=' + encodeURIComponent(msg), '_blank');
     if (pays_of(ev)[me.id] !== 'pending') setPaid(ev, me.id, 'pending');
   };
@@ -1317,7 +1354,7 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
                 return id ? (
                   <div key={i} onClick={() => p && onProfile && onProfile(p.id)} className="slot slot-on">
                     <span className="slot-n">{i + 1}</span>
-                    <span>🔥</span>
+                    <span>{fireIce(i)}</span>
                     {p && <Av p={p} size="w-6 h-6" text="text-sm" />}
                     <b className="truncate">{p ? p.nickname : isGuest(id) ? guestName(id) + ' (inv.)' : 'Jugador'}</b>
                     {ev.fee > 0 && <span className="ml-auto text-xs">{st === 'ok' ? '✅' : st === 'pending' ? '⏳' : ''}</span>}
@@ -1918,45 +1955,142 @@ function ProfileHistory({ id, players }) {
 }
 
 // ===== Asistencias: calendario por jugador =====
-function AttendanceCard({ id, events }) {
+function AttendanceCard({ id, events, isAdmin }) {
   const [m, setM] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
-  const evs = events.filter((e) => e.date);
+  const [sel, setSel] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [shown, setShown] = useState(0);
+  const evs = events.filter((e) => e.date).sort((a, b) => when(a) - when(b));
+
+  // Estado de cada pichanga para este jugador
   const status = (e) => {
-    const isIn = (e.going || []).includes(id), went = !!(e.att || {})[id];
+    const a = (e.att || {})[id], isIn = (e.going || []).includes(id);
     const over = when(e).getTime() + 3 * 36e5 < Date.now(), taken = Object.keys(e.att || {}).length > 0;
-    if (went) return 'ok';
+    if (a === true) return 'ok';
+    if (a === false) return 'miss';
     if (isIn && over) return taken ? 'miss' : 'pend';
     if (isIn) return 'soon';
     return 'other';
   };
+  const isLate = (e) => !!(e.late || {})[id];
+
   const ok = evs.filter((e) => status(e) === 'ok').length, miss = evs.filter((e) => status(e) === 'miss').length;
+  const lates = evs.filter(isLate).length;
   const pct = ok + miss ? Math.round((ok / (ok + miss)) * 100) : null;
+
+  // Racha: pichangas seguidas con asistencia (cuenta solo las ya decididas)
+  const decided = evs.filter((e) => status(e) === 'ok' || status(e) === 'miss').map((e) => status(e));
+  let streak = 0, best = 0, run = 0;
+  decided.forEach((st) => { if (st === 'ok') { run++; best = Math.max(best, run); } else run = 0; });
+  for (let i = decided.length - 1; i >= 0 && decided[i] === 'ok'; i--) streak++;
+
+  // Anillo animado
+  useEffect(() => { const t = setTimeout(() => setShown(pct || 0), 120); return () => clearTimeout(t); }, [pct]);
+  const R = 26, C = 2 * Math.PI * R;
+  const ringColor = pct === null ? '#475569' : pct >= 80 ? '#34d399' : pct >= 50 ? '#fbbf24' : '#fb7185';
+
+  // Forma reciente: últimas 8 pichangas donde estuvo anotado
+  const recent = evs.filter((e) => status(e) !== 'other').slice(-8);
+
   const byDay = {};
-  evs.forEach((e) => { const s = status(e); const prev = byDay[e.date]; const rank = { ok: 4, miss: 3, soon: 2, pend: 1, other: 0 }; if (!prev || rank[s] > rank[prev]) byDay[e.date] = s; });
+  evs.forEach((e) => { const st = status(e); const prev = byDay[e.date]; const rank = { ok: 4, miss: 3, soon: 2, pend: 1, other: 0 }; if (!prev || rank[st] > rank[prev]) byDay[e.date] = st; });
   const y = m.getFullYear(), mo = m.getMonth();
   const offset = (new Date(y, mo, 1).getDay() + 6) % 7, days = new Date(y, mo + 1, 0).getDate();
   const cls = { ok: 'bg-emerald-500/25 border border-emerald-500/50 text-emerald-300 font-black', miss: 'bg-rose-500/20 border border-rose-500/40 text-rose-300 font-black', soon: 'bg-amber-500/20 border border-amber-500/40 text-amber-300 font-black', pend: 'bg-slate-700/60 border border-slate-600 text-slate-200 font-bold', other: 'bg-slate-800/70 border border-slate-700 text-slate-300' };
   const key = (d) => `${y}-${String(mo + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  const now = new Date(), todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  // Marcar (solo admins)
+  const upd = async (e, patch) => {
+    setBusy(true);
+    try { await db.collection('events').doc(e.id).update(patch); }
+    catch (x) { console.error(x); alert('No se pudo guardar la asistencia.'); }
+    setBusy(false);
+  };
+  const clearLate = { ['late.' + id]: FV.delete(), ['latePaid.' + id]: FV.delete() };
+  const markOk = (e) => upd(e, { ['att.' + id]: true });
+  const markMiss = (e) => upd(e, { ['att.' + id]: false, ...clearLate });
+  const markLate = (e) => upd(e, isLate(e) ? clearLate : { ['late.' + id]: true, ['att.' + id]: true });
+  const markClear = (e) => upd(e, { ['att.' + id]: FV.delete(), ...clearLate });
+
+  const label = { ok: '✅ Asistió', miss: '❌ Faltó', soon: '🕒 Anotado, aún no juega', pend: '⏳ Falta pasar lista', other: 'No estaba anotado' };
+  const dayEvs = sel ? evs.filter((e) => e.date === sel) : [];
+  const medal = pct === 100 && ok >= 3 ? '🏆 Asistencia perfecta' : streak >= 3 ? `🔥 Racha de ${streak}` : null;
+
   return (
     <div className={card + ' space-y-3'}>
       <div className="flex items-center justify-between">
         <b className="text-sm">📅 Asistencias</b>
         <div className="flex items-center gap-2">
           <button onClick={() => setM(new Date(y, mo - 1, 1))} className="w-7 h-7 rounded-lg bg-slate-800 text-slate-300">‹</button>
-          <span className="text-xs font-bold capitalize w-28 text-center">{m.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}</span>
+          <button onClick={() => setM(new Date(now.getFullYear(), now.getMonth(), 1))} className="text-xs font-bold capitalize w-28 text-center">{m.toLocaleDateString('es-PE', { month: 'long', year: 'numeric' })}</button>
           <button onClick={() => setM(new Date(y, mo + 1, 1))} className="w-7 h-7 rounded-lg bg-slate-800 text-slate-300">›</button>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-xl bg-slate-950/60 p-2"><b className="num text-lg text-emerald-400">{ok}</b><p className="text-[10px] text-slate-400">Asistió</p></div>
-        <div className="rounded-xl bg-slate-950/60 p-2"><b className="num text-lg text-rose-400">{miss}</b><p className="text-[10px] text-slate-400">Faltó</p></div>
-        <div className="rounded-xl bg-slate-950/60 p-2"><b className="num text-lg text-amber-400">{pct === null ? '–' : pct + '%'}</b><p className="text-[10px] text-slate-400">Asistencia</p></div>
+
+      <div className="flex items-center gap-3">
+        <div className="relative w-16 h-16 shrink-0">
+          <svg viewBox="0 0 64 64" className="w-16 h-16 -rotate-90">
+            <circle cx="32" cy="32" r={R} fill="none" stroke="#1e293b" strokeWidth="7" />
+            <circle cx="32" cy="32" r={R} fill="none" stroke={ringColor} strokeWidth="7" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - shown / 100)} style={{ transition: 'stroke-dashoffset .9s ease, stroke .4s' }} />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center num text-sm font-black" style={{ color: ringColor }}>{pct === null ? '–' : pct + '%'}</span>
+        </div>
+        <div className="flex-1 grid grid-cols-4 gap-1.5 text-center">
+          <div className="rounded-xl bg-slate-950/60 p-1.5"><b className="num text-base text-emerald-400">{ok}</b><p className="text-[9px] text-slate-400">Asistió</p></div>
+          <div className="rounded-xl bg-slate-950/60 p-1.5"><b className="num text-base text-rose-400">{miss}</b><p className="text-[9px] text-slate-400">Faltó</p></div>
+          <div className="rounded-xl bg-slate-950/60 p-1.5"><b className="num text-base text-amber-400">{streak}🔥</b><p className="text-[9px] text-slate-400">Racha{best > streak ? ` (mejor ${best})` : ''}</p></div>
+          <div className="rounded-xl bg-slate-950/60 p-1.5"><b className="num text-base text-orange-400">{lates}</b><p className="text-[9px] text-slate-400">Tarde</p></div>
+        </div>
       </div>
+
+      {medal && <p className="text-xs font-bold text-center rounded-xl py-1.5 bg-amber-500/10 border border-amber-500/30 text-amber-300">{medal}</p>}
+
+      {recent.length > 0 && (
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-slate-400">Últimas:</span>
+          {recent.map((e) => { const st = status(e); return <span key={e.id} title={`${e.title} · ${e.date}`} className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${st === 'ok' ? (isLate(e) ? 'bg-orange-500/25 border border-orange-500/50' : 'bg-emerald-500/25 border border-emerald-500/50') : st === 'miss' ? 'bg-rose-500/25 border border-rose-500/50' : 'bg-slate-700/60 border border-slate-600'}`}>{st === 'ok' ? (isLate(e) ? '⏱' : '✓') : st === 'miss' ? '✕' : '·'}</span>; })}
+        </div>
+      )}
+
       <div className="grid grid-cols-7 gap-1 text-center text-[10px] text-slate-500 font-bold">{['L', 'M', 'M', 'J', 'V', 'S', 'D'].map((d, i) => <span key={i}>{d}</span>)}</div>
       <div className="grid grid-cols-7 gap-1">
         {Array.from({ length: offset }).map((_, i) => <span key={'o' + i} />)}
-        {Array.from({ length: days }).map((_, i) => { const st = byDay[key(i + 1)]; return <div key={i} className={`h-9 rounded-lg flex items-center justify-center text-xs ${st ? cls[st] : 'text-slate-600'}`}>{i + 1}</div>; })}
+        {Array.from({ length: days }).map((_, i) => {
+          const k = key(i + 1), st = byDay[k], has = evs.some((e) => e.date === k);
+          return (
+            <button key={i} disabled={!has} onClick={() => setSel(sel === k ? null : k)}
+              className={`h-9 rounded-lg flex items-center justify-center text-xs transition ${st ? cls[st] : 'text-slate-600'} ${sel === k ? 'ring-2 ring-orange-500 scale-105' : ''} ${k === todayKey && sel !== k ? 'outline outline-1 outline-slate-500' : ''} ${has ? 'cursor-pointer active:scale-95' : 'cursor-default'}`}>{i + 1}</button>
+          );
+        })}
       </div>
+
+      {!sel && <p className="text-[10px] text-slate-500 text-center">{isAdmin ? 'Toca un día con pichanga para ver el detalle y marcar la asistencia.' : 'Toca un día con pichanga para ver el detalle.'}</p>}
+
+      {dayEvs.map((e) => {
+        const st = status(e), isIn = (e.going || []).includes(id), canMark = isAdmin && (isIn || (e.att || {})[id] !== undefined);
+        return (
+          <div key={e.id} className="rounded-xl border border-slate-800 bg-slate-950/60 p-2.5 space-y-2 enter">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <b className="block truncate text-xs text-slate-100">{e.title}</b>
+                <p className="text-[10px] text-slate-400">🗓 {fmtDay(e)} · 🕗 {fmtHour(e)}</p>
+              </div>
+              <span className="text-[11px] font-bold text-right">{label[st]}{isLate(e) && <span className="block text-orange-400">⏱ Llegó tarde{(e.latePaid || {})[id] === 'ok' ? ' · multa cobrada ✅' : ` · debe S/ ${lateFeeOf(e)}`}</span>}</span>
+            </div>
+            {canMark && (
+              <div className="flex flex-wrap gap-1.5">
+                <button disabled={busy} onClick={() => markOk(e)} className={`px-2.5 py-1 rounded-lg text-[11px] font-bold disabled:opacity-50 ${st === 'ok' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-slate-300'}`}>✅ Asistió</button>
+                <button disabled={busy} onClick={() => markMiss(e)} className={`px-2.5 py-1 rounded-lg text-[11px] font-bold disabled:opacity-50 ${st === 'miss' ? 'bg-rose-600 text-white' : 'bg-slate-800 text-slate-300'}`}>❌ Faltó</button>
+                <button disabled={busy} onClick={() => markLate(e)} className={`px-2.5 py-1 rounded-lg text-[11px] font-bold disabled:opacity-50 ${isLate(e) ? 'bg-orange-600 text-white' : 'bg-slate-800 text-slate-300'}`}>⏱ {isLate(e) ? 'Quitar tarde' : 'Llegó tarde'}</button>
+                {(e.att || {})[id] !== undefined && <button disabled={busy} onClick={() => markClear(e)} className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-slate-800 text-slate-400 disabled:opacity-50">↺ Limpiar</button>}
+              </div>
+            )}
+            {isAdmin && !canMark && <p className="text-[10px] text-slate-500">Este jugador no estaba anotado en esta pichanga.</p>}
+          </div>
+        );
+      })}
+
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-slate-400">
         <span><b className="text-emerald-400">■</b> Asistió</span><span><b className="text-rose-400">■</b> Faltó</span><span><b className="text-amber-400">■</b> Anotado, falta jugar</span><span><b className="text-slate-300">■</b> Sin pasar lista / no anotado</span>
       </div>
@@ -2076,7 +2210,7 @@ function ProfilePage({ id, me, players, posts, isAdmin, events, onProfile, onClo
         ))}
       </div>
 
-      <AttendanceCard id={p.id} events={events || []} />
+      <AttendanceCard id={p.id} events={events || []} isAdmin={isAdmin} />
 
       <ProfileHistory id={p.id} players={players} />
 
