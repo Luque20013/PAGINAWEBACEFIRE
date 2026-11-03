@@ -988,7 +988,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
 
   // Texto del mensaje de equipos (R = lista de equipos)
   const teamText = (R) => {
-    let t = '🏐 *ICEFIRE · ' + (R.manual ? 'EQUIPOS' : 'EQUIPOS BALANCEADOS') + '* 🏐\n';
+    let t = '🔥❄️ *ICEFIRE · ' + (R.manual ? 'EQUIPOS' : 'EQUIPOS BALANCEADOS') + '* ❄️🔥\n🏐━━━━━━━━━━━━🏐\n';
     if (ev) t += `\n📅 *${ev.title}*\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}${placeTxt(ev) ? `\n📍 ${placeTxt(ev)}` : ''}\n`;
     t += '\n';
     R.forEach((e, ti) => {
@@ -1000,9 +1000,9 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
       });
       t += '\n';
     });
-    if (ev && ev.fee > 0) t += `💸 Si aún no pagaste: yapea S/ ${ev.fee} a ${YAPE_NAME} (${YAPE_NUM}) hasta el ${fmtDL(ev)}.\n`;
-    if (ev) t += `⏱ Llegar tarde = multa de S/ ${lateFeeOf(ev)} al fondo del grupo.\n`;
-    t += '⏰ Llegar 15 min antes para calentar y armar la cancha.\n\n🔥 Ranking y resultados: ' + SITE_URL;
+    if (ev && ev.fee > 0) t += `💸 Si aún no pagaste: yapea S/ ${ev.fee} a ${YAPE_NAME} (${YAPE_NUM}) 💜 hasta el ${fmtDL(ev)}.\n`;
+    if (ev) t += `⏱ Llegar tarde = multa de S/ ${lateFeeOf(ev)} al fondo del grupo 😅\n`;
+    t += '⏰ Llegar 15 min antes para calentar y armar la cancha 💪\n\n🏆 Ranking y resultados: ' + SITE_URL + '\n¡A darlo todo! 🔥❄️🏐';
     return t;
   };
 
@@ -1194,25 +1194,25 @@ const fireIce = (i) => (i % 2 === 0 ? '🔥' : '❄️');
 const teamIcon = (i) => ['🔥', '❄️', '⚡'][i] || '🏐';
 // Bloque de cuota + plazo de pago (12 h antes del partido). Solo si la pichanga tiene cuota.
 const payLine = (ev) => ev.fee > 0
-  ? `\n💰 Cuota: *S/ ${ev.fee}*\n💜 Yape a ${YAPE_NAME}: *${YAPE_NUM}*\n⏰ Paga hasta el *${fmtDL(ev)}* (${ev.payHours || PAY_H} h antes del partido)`
-  : '';
+  ? `\n💰 Cuota: *S/ ${ev.fee}*\n💜 Yape a ${YAPE_NAME}: *${YAPE_NUM}*\n⏰ Paga hasta el *${fmtDL(ev)}* (${ev.payHours || PAY_H} h antes del partido) 🙏`
+  : '\n🆓 Esta pichanga es gratis 🎉';
 const placeLines = (ev) => {
   const pl = placeTxt(ev), mp = mapsOf(ev);
-  return `${pl ? `\n📍 ${pl}` : ''}${mp ? `\n🗺 ${mp}` : ''}${!pl && !mp ? '\n📍 Lugar por confirmar' : ''}`;
+  return `${pl ? `\n📍 ${pl}` : ''}${mp ? `\n🗺 Cómo llegar: ${mp}` : ''}${!pl && !mp ? '\n📍 Lugar por confirmar 🤔' : ''}`;
 };
 
 const evText = (ev) => {
   const g = effGoing(ev), cap = ev.cap || 12, libres = Math.max(0, cap - g.length);
-  return `🏐 *${ev.title}*\n━━━━━━━━━━━━\n🗓 ${fmtDay(ev)}\n🕗 ${fmtHour(ev)}${placeLines(ev)}${payLine(ev)}\n\n✅ ${Math.min(g.length, cap)}/${cap} confirmados${libres > 0 ? ` · quedan ${libres} cupos` : ' · lista llena'}\n\n🔥 Anótate en la web 👇\n${evLink(ev.id)}`;
+  return `🔥❄️ *${ev.title.toUpperCase()}* ❄️🔥\n🏐━━━━━━━━━━━━🏐\n🗓 ${fmtDay(ev)}\n🕗 ${fmtHour(ev)}${placeLines(ev)}${payLine(ev)}\n\n👥 ${Math.min(g.length, cap)}/${cap} confirmados ${libres > 0 ? `· 🎟️ quedan ${libres} cupos` : '· 🚫 lista llena'}\n\n💪 ¡Anótate en la web! 👇\n${evLink(ev.id)}`;
 };
 
-const evOpen = (ev) => '🔥 *¡YA ESTÁ ABIERTA LA LISTA!*\nAnótate a la pichanga 🏐\n\n' + evText(ev);
+const evOpen = (ev) => '🚨🔥 *¡YA ESTÁ ABIERTA LA LISTA!* 🔥🚨\n🏐 ¡Anótate a la pichanga! 💪\n\n' + evText(ev);
 const evSpots = (ev) => {
   const cap = ev.cap || 12, left = cap - effGoing(ev).length;
   const head = left > 0
-    ? `⚠️ *¡CUPOS LIMITADOS!*\nQuedan solo ${left} de ${cap} lugares 🏐`
-    : `🚫 *¡LISTA LLENA!*\nYa están los ${cap} cupos. Aún puedes entrar a la lista de espera 🏐`;
-  return `${head}\n\n*${ev.title}*\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}${placeLines(ev)}${payLine(ev)}\n\n${left > 0 ? 'Anótate antes de que se llene 👇' : 'Entra a la lista de espera 👇'}\n${evLink(ev.id)}`;
+    ? `⚠️🔥 *¡CUPOS LIMITADOS!* 🔥⚠️\n⏳ Quedan solo *${left}* de ${cap} lugares 🏐`
+    : `🚫❄️ *¡LISTA LLENA!* ❄️🚫\n😮 Ya están los ${cap} cupos. ¡Aún puedes entrar a la lista de espera! 🏐`;
+  return `${head}\n\n🔥 *${ev.title}* ❄️\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}${placeLines(ev)}${payLine(ev)}\n\n${left > 0 ? '🏃 ¡Anótate antes de que se llene! 👇' : '⏳ Entra a la lista de espera 👇'}\n${evLink(ev.id)}`;
 };
 
 function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
@@ -1287,9 +1287,9 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
   const evPay = (ev) => {
     const pays = ev.paid || {};
     const pend = (ev.going || []).slice(0, ev.cap || 12).filter((id) => pays[id] !== 'ok').map((id) => ({ id, p: byId(id), st: pays[id] })).filter((x) => x.p || isGuest(x.id));
-    if (!pend.length) return `✅ *${ev.title}*\n¡Todos los convocados ya pagaron! Gracias 🔥`;
+    if (!pend.length) return `✅🎉 *${ev.title}*\n¡Todos los convocados ya pagaron! Gracias equipo 🔥❄️🙌`;
     const vencido = Date.now() > payDeadline(ev);
-    return `💸 *RECORDATORIO DE PAGO*\n🏐 ${ev.title}\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}\n\n💰 Cuota: *S/ ${ev.fee}*\n💜 Yape a ${YAPE_NAME}: *${YAPE_NUM}*\n${vencido ? '⚠️ El plazo ya venció, ¡yapea hoy mismo!' : `⏰ Plazo: hasta el *${fmtDL(ev)}* (${ev.payHours || PAY_H} h antes)`}\n\n⏳ *Faltan pagar (${pend.length}):*\n${pend.map((x) => `• ${x.p ? x.p.nickname : guestName(x.id) + ' (inv.)'}${x.st === 'pending' ? ' ⏳ (avisó, por confirmar)' : ''}`).join('\n')}\n\nYapea y toca "Ya yapeé" en la web 👇\n${evLink(ev.id)}`;
+    return `💸🔥 *RECORDATORIO DE PAGO* 🔥💸\n🏐 ${ev.title}\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}\n\n💰 Cuota: *S/ ${ev.fee}*\n💜 Yape a ${YAPE_NAME}: *${YAPE_NUM}*\n${vencido ? '🚨 ¡El plazo ya venció! Yapea hoy mismo 🙏' : `⏰ Plazo: hasta el *${fmtDL(ev)}* (${ev.payHours || PAY_H} h antes) 🙏`}\n\n⏳ *Faltan pagar (${pend.length}):*\n${pend.map((x, i) => `${fireIce(i)} ${x.p ? x.p.nickname : guestName(x.id) + ' (inv.)'}${x.st === 'pending' ? ' ⏳ (avisó, por confirmar)' : ' 💸'}`).join('\n')}\n\n📲 Yapea y toca "Ya yapeé" en la web 👇\n${evLink(ev.id)}\n\n¡Gracias! 🙌🏐`;
   };
 
   const evList = (ev) => {
@@ -1297,11 +1297,11 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
     const nm = (id) => { const p = byId(id); return p ? p.nickname : isGuest(id) ? guestName(id) + ' (inv.)' : 'Jugador'; };
     const rows = Array.from({ length: cap }).map((_, i) => `${numEmo(i + 1)} ${g[i] ? fireIce(i) + ' ' + nm(g[i]) : '▫️ libre'}`);
     const wait = g.slice(cap).map((id, i) => `${numEmo(cap + i + 1)} ⏳ ${nm(id)}`);
-    return `🏐 *${ev.title}*\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}${placeTxt(ev) ? `\n📍 ${placeTxt(ev)}` : ''}\n\n🔥❄️ *LISTA (${Math.min(g.length, cap)}/${cap})* ❄️🔥\n${rows.join('\n')}${wait.length ? `\n\n⏳ *Lista de espera*\n${wait.join('\n')}` : ''}${ev.fee > 0 ? `\n\n💰 Cuota S/ ${ev.fee} · ⏰ paga hasta el ${fmtDL(ev)}` : ''}\n\n🔥 Anótate aquí 👇\n${evLink(ev.id)}`;
+    return `🏐 *${ev.title}* 🏐\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}${placeTxt(ev) ? `\n📍 ${placeTxt(ev)}` : ''}\n\n🔥❄️ *LISTA (${Math.min(g.length, cap)}/${cap})* ❄️🔥\n${rows.join('\n')}${wait.length ? `\n\n⏳ *Lista de espera*\n${wait.join('\n')}` : ''}${ev.fee > 0 ? `\n\n💰 Cuota S/ ${ev.fee} · ⏰ paga hasta el ${fmtDL(ev)}` : ''}\n\n💪 ¡Anótate aquí! 👇\n${evLink(ev.id)}`;
   };
 
   const payYape = (ev) => {
-    const msg = `Hola ${YAPE_NAME} 👋\nSoy ${me.nickname} (${me.name}). Ya yapeé *S/ ${ev.fee}* por la pichanga "${ev.title}" del ${fmtDay(ev)}.\n¿Me confirmas el pago? 🏐\n\nVer pichanga: ${evLink(ev.id)}`;
+    const msg = `Hola ${YAPE_NAME} 👋💜\nSoy ${me.nickname} (${me.name}). Ya yapeé *S/ ${ev.fee}* 💸 por la pichanga "${ev.title}" 🏐 del ${fmtDay(ev)}.\n¿Me confirmas el pago? 🙏\n\n🔗 Ver pichanga: ${evLink(ev.id)}`;
     window.open('https://wa.me/' + YAPE_WA + '?text=' + encodeURIComponent(msg), '_blank');
     if (pays_of(ev)[me.id] !== 'pending') setPaid(ev, me.id, 'pending');
   };
