@@ -58,14 +58,63 @@ const Linkify = ({ text, className }) => (
       : part)}
   </p>
 );
-const waShare = (t) => window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank');
+// Abrir WhatsApp con un mensaje listo.
+// En celular se usa el enlace normal (los emojis llegan bien).
+// En computadora los enlaces a WhatsApp suelen romper los emojis ("�"), así que se muestra una ventana
+// con el mensaje para COPIARLO y pegarlo en el chat (así los emojis llegan perfectos).
+const IS_MOBILE = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const copyText = async (t) => {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(t); return true; } } catch (e) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = t; ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy'); ta.remove(); return ok;
+  } catch (e) { return false; }
+};
+const waDialog = (phone, text) => {
+  const q = encodeURIComponent(text);
+  const webUrl = 'https://web.whatsapp.com/send?' + (phone ? 'phone=' + phone + '&' : '') + 'text=' + q;
+  const appUrl = 'whatsapp://' + (phone ? 'send?phone=' + phone : '');
+  const mk = (tag, css, txt) => { const e = document.createElement(tag); e.style.cssText = css; if (txt) e.textContent = txt; return e; };
+  const ov = mk('div', 'position:fixed;top:0;right:0;bottom:0;left:0;background:rgba(2,6,23,.78);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px');
+  const box = mk('div', 'width:100%;max-width:480px;max-height:92vh;overflow:auto;background:#0f172a;border:1px solid #f97316;border-radius:16px;padding:16px;color:#e2e8f0');
+  const ta = mk('textarea', 'width:100%;height:240px;background:#020617;color:#e2e8f0;border:1px solid #334155;border-radius:10px;padding:8px;font-size:13px;resize:vertical;box-sizing:border-box');
+  ta.value = text; ta.readOnly = true;
+  const row = mk('div', 'display:flex;flex-wrap:wrap;gap:8px;margin-top:10px');
+  const onKey = (e) => { if (e.key === 'Escape') close(); };
+  const close = () => { ov.remove(); document.removeEventListener('keydown', onKey); };
+  const btn = (label, bg, fg, fn) => { const b = mk('button', 'flex:1;min-width:140px;padding:10px 12px;border-radius:12px;border:0;font-weight:800;font-size:12px;cursor:pointer;background:' + bg + ';color:' + fg, label); b.onclick = fn; return b; };
+  const copyBtn = btn('📋 Copiar mensaje', '#f97316', '#0b1120', async () => {
+    const ok = await copyText(text);
+    copyBtn.textContent = ok ? '✅ Copiado: pégalo con Ctrl+V' : '⚠️ Selecciona el texto y copia con Ctrl+C';
+  });
+  row.appendChild(copyBtn);
+  row.appendChild(btn('💻 Abrir la app de WhatsApp', '#047857', '#ecfdf5', () => { window.location.href = appUrl; }));
+  row.appendChild(btn('🌐 Abrir WhatsApp Web', '#1e293b', '#e2e8f0', () => { window.open(webUrl, '_blank'); }));
+  row.appendChild(btn('Cerrar', '#1e293b', '#94a3b8', close));
+  box.appendChild(mk('div', 'font-weight:800;font-size:15px;margin-bottom:6px', '📲 Mensaje listo para WhatsApp'));
+  box.appendChild(mk('div', 'font-size:12px;color:#94a3b8;margin-bottom:8px', 'Copia el mensaje, abre el chat del grupo y pégalo con Ctrl+V. Así los emojis llegan perfectos.'));
+  box.appendChild(ta); box.appendChild(row);
+  ov.appendChild(box);
+  ov.onclick = (e) => { if (e.target === ov) close(); };
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(ov);
+  // Se copia solo al abrir la ventana
+  copyText(text).then((ok) => { if (ok) copyBtn.textContent = '✅ Copiado: pégalo con Ctrl+V'; });
+};
+const waOpen = (phone, text) => {
+  if (IS_MOBILE) { window.open('https://wa.me/' + (phone || '') + '?text=' + encodeURIComponent(text), '_blank'); return; }
+  waDialog(phone, text);
+};
+const waShare = (t) => waOpen('', t);
 
 const POS = [
   { id: 'armador', label: 'Armador', s: 'ARM', c: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
   { id: 'punta', label: 'Punta Receptor', s: 'PUN', c: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
   { id: 'central', label: 'Central', s: 'CEN', c: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30' },
   { id: 'opuesto', label: 'Opuesto', s: 'OPU', c: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
-  { id: 'libero', label: 'Líbero', s: 'LIB', c: 'bg-rose-500/20 text-rose-400 border-rose-500/30' }
+  { id: 'defensa', label: 'Defensa', s: 'DEF', c: 'bg-rose-500/20 text-rose-400 border-rose-500/30' }
 ];
 
 const SK = ['saque', 'recepcion', 'armado', 'ataque', 'bloqueo', 'defensa'];
@@ -117,7 +166,7 @@ const Av = ({ p, size = 'w-10 h-10', text = 'text-2xl' }) => (
 );
 
 const Badge = ({ id }) => {
-  const p = POS.find((x) => x.id === id) || POS[0];
+  const p = POS.find((x) => x.id === (id === 'libero' ? 'defensa' : id)) || POS[0];
   return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${p.c}`}>{p.s}</span>;
 };
 
@@ -925,7 +974,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
   const [sel, setSel] = useState(initialEv || (upcoming[0] ? upcoming[0].id : 'all'));
   const ev = events.find((e) => e.id === sel);
   const opts = ev && !upcoming.find((e) => e.id === ev.id) ? [ev, ...upcoming] : upcoming;
-  const base = ev ? effGoing(ev).slice(0, ev.cap || 12).map((id) => players.find((p) => p.id === id) || (isGuest(id) ? { id, nickname: guestName(id) + ' (inv.)', avatar: '🎟️', position: 'invitado', skills: {}, isGuest: true } : null)).filter(Boolean) : players;
+  const base = ev ? effGoing(ev).slice(0, ev.cap || 12).map((id) => players.find((p) => p.id === id) || (isGuest(id) ? { id, nickname: guestName(id) + ' (inv.)', avatar: '🎟️', position: guestPosOf(ev, id) || 'invitado', skills: {}, isGuest: true } : null)).filter(Boolean) : players;
   const waiting = ev ? Math.max(0, effGoing(ev).length - (ev.cap || 12)) : 0;
 
   const [n, setN] = useState(2);
@@ -945,7 +994,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
     }));
 
     // Reparto por posiciones para garantizar balance técnico
-    ['armador', 'central', 'punta', 'opuesto', 'libero'].forEach((pos) => {
+    ['armador', 'central', 'punta', 'opuesto', 'defensa'].forEach((pos) => {
       pool.filter((p) => p.position === pos)
         .sort((a, b) => ovr(b.skills) - ovr(a.skills))
         .forEach((p) => {
@@ -960,7 +1009,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
     });
 
     // Invitados (sin posición): se reparten al final para igualar el número de jugadores
-    pool.filter((p) => !['armador', 'central', 'punta', 'opuesto', 'libero'].includes(p.position))
+    pool.filter((p) => !['armador', 'central', 'punta', 'opuesto', 'defensa'].includes(p.position))
       .sort((a, b) => ovr(b.skills) - ovr(a.skills))
       .forEach((p) => {
         T.sort((a, b) => (a.pl.length - b.pl.length) || (a.tot - b.tot));
@@ -995,7 +1044,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
       const avg = (e.tot / (e.pl.length || 1)).toFixed(1);
       t += `${teamIcon(ti)} *${e.name.toUpperCase()}* (⭐ ${avg})\n`;
       e.pl.forEach((p, i) => {
-        const badge = p.isGuest ? 'INV' : (POS.find((x) => x.id === p.position)?.s || 'JUG');
+        const badge = POS.find((x) => x.id === p.position)?.s || (p.isGuest ? 'INV' : 'JUG');
         t += `  ${numEmo(i + 1)} ${p.nickname} [${badge}]\n`;
       });
       t += '\n';
@@ -1108,7 +1157,7 @@ function Teams({ players, events, initialEv, onRegister, onStartTri, isAdmin }) 
                   {e.pl.map((p) => (
                     <div key={p.id} className="py-1.5 flex justify-between items-center text-sm">
                       <span className="text-slate-200">{p.avatar} {p.nickname}</span>
-                      {p.isGuest ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-slate-700/40 text-slate-300 border-slate-600">INV</span> : <Badge id={p.position} />}
+                      {p.isGuest && !POS.some((x) => x.id === p.position) ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded border bg-slate-700/40 text-slate-300 border-slate-600">INV</span> : <Badge id={p.position} />}
                     </div>
                   ))}
                 </div>
@@ -1150,14 +1199,18 @@ const payClosed = () => false;
 // Invitados sin cuenta (los anota un admin)
 const isGuest = (id) => String(id).startsWith('guest:');
 const guestName = (id) => String(id).slice(6);
-const addGuest = async (ev, name) => {
+const addGuest = async (ev, name, pos) => {
   const clean = String(name || '').trim().replace(/[.\[\]*~/`]/g, '').slice(0, 30);
-  if (!clean) return;
+  if (!clean) return false;
+  if (!pos) { alert('Elige la posición del invitado'); return false; }
   const id = 'guest:' + clean;
-  if ((ev.going || []).includes(id)) return alert('Ese nombre ya está en la lista');
-  try { await db.collection('events').doc(ev.id).update({ going: FV.arrayUnion(id) }); }
-  catch (e) { console.error(e); alert('No se pudo agregar al invitado.'); }
+  if ((ev.going || []).includes(id)) { alert('Ese nombre ya está en la lista'); return false; }
+  try { await db.collection('events').doc(ev.id).update({ going: FV.arrayUnion(id), ['guestPos.' + id]: pos }); return true; }
+  catch (e) { console.error(e); alert('No se pudo agregar al invitado.'); return false; }
 };
+// Cambiar la posición de un invitado ya anotado (solo admins)
+const setGuestPos = (ev, id, pos) => db.collection('events').doc(ev.id).update({ ['guestPos.' + id]: pos }).catch((e) => { console.error(e); alert('No se pudo cambiar la posición.'); });
+const guestPosOf = (ev, id) => (ev.guestPos || {})[id] || '';
 // Cambiar la cuota de una pichanga (solo admins)
 const editFee = (ev) => {
   const v = prompt('Nueva cuota por persona (S/). Pon 0 si es gratis:', ev.fee || 0);
@@ -1166,7 +1219,7 @@ const editFee = (ev) => {
   if (!isFinite(n) || n < 0 || n > 500) return alert('Escribe un número válido, por ejemplo 15 o 12.5');
   db.collection('events').doc(ev.id).update({ fee: n }).catch((e) => { console.error(e); alert('No se pudo cambiar la cuota.'); });
 };
-const removeGuest = (ev, id) => db.collection('events').doc(ev.id).update({ going: FV.arrayRemove(id) }).catch(console.error);
+const removeGuest = (ev, id) => db.collection('events').doc(ev.id).update({ going: FV.arrayRemove(id), ['guestPos.' + id]: FV.delete() }).catch(console.error);
 const effGoing = (e) => { const g = e.going || []; return payClosed(e) ? g.filter((id) => (e.paid || {})[id]) : g; };
 // Multa por llegar tarde: va al fondo del grupo
 const LATE_FEE = 2;
@@ -1300,9 +1353,24 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
     return `🏐 *${ev.title}* 🏐\n🗓 ${fmtDay(ev)} · 🕗 ${fmtHour(ev)}${placeTxt(ev) ? `\n📍 ${placeTxt(ev)}` : ''}\n\n🔥❄️ *LISTA (${Math.min(g.length, cap)}/${cap})* ❄️🔥\n${rows.join('\n')}${wait.length ? `\n\n⏳ *Lista de espera*\n${wait.join('\n')}` : ''}${ev.fee > 0 ? `\n\n💰 Cuota S/ ${ev.fee} · ⏰ paga hasta el ${fmtDL(ev)}` : ''}\n\n💪 ¡Anótate aquí! 👇\n${evLink(ev.id)}`;
   };
 
+  // Aviso "Así será el juego de hoy": quiénes vienen, posiciones, formato y recordatorios
+  const evToday = (ev, note) => {
+    const cap = ev.cap || 12, g = effGoing(ev).slice(0, cap), n = g.length;
+    const pad = (x) => String(x).padStart(2, '0'), d0 = new Date();
+    const hoy = ev.date === `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}`;
+    const nm = (id) => { const p = byId(id); return p ? p.nickname : isGuest(id) ? guestName(id) + ' (inv.)' : 'Jugador'; };
+    const cnt = {};
+    g.forEach((id) => { const p = byId(id); const pos = p ? p.position : guestPosOf(ev, id); if (pos) cnt[pos] = (cnt[pos] || 0) + 1; });
+    const posTxt = POS.filter((x) => cnt[x.id]).map((x) => `${x.s} ${cnt[x.id]}`).join(' · ');
+    const teamsN = n >= 15 ? 3 : 2, per = Math.floor(n / teamsN);
+    const formato = n < 4 ? 'Faltan jugadores para armar equipos 😬' : teamsN === 3 ? `3 equipos de ${per} 🔥❄️⚡ · triangular: ¡el que gana se queda! 🏆` : `2 equipos de ${per} · 🔥 vs ❄️`;
+    const pend = ev.fee > 0 ? g.filter((id) => (ev.paid || {})[id] !== 'ok').length : 0;
+    return `🔥❄️ *${hoy ? '¡ASÍ SERÁ EL JUEGO DE HOY!' : '¡ASÍ SERÁ EL JUEGO!'}* ❄️🔥\n🏐━━━━━━━━━━━━🏐\n📅 *${ev.title}*\n🗓 ${hoy ? 'HOY · ' : ''}${fmtDay(ev)}\n🕗 ${fmtHour(ev)}${placeLines(ev)}\n\n👥 *Vamos ${n} jugadores:*\n${g.map((id, i) => `${numEmo(i + 1)} ${fireIce(i)} ${nm(id)}`).join('\n')}${posTxt ? `\n\n🎯 Posiciones: ${posTxt}` : ''}\n🏐 Formato: ${formato}${note ? `\n\n📝 *Nota:* ${note}` : ''}${pend > 0 ? `\n\n💸 Faltan ${pend} por pagar: yapea S/ ${ev.fee} a ${YAPE_NAME} (${YAPE_NUM}) 💜${Date.now() < payDeadline(ev) ? ` antes del ${fmtDL(ev)}` : ' hoy mismo 🙏'}` : ''}\n\n⏰ Llegar 15 min antes para calentar y armar la cancha 💪\n⏱ Llegar tarde = multa de S/ ${lateFeeOf(ev)} al fondo del grupo 😅\n💧 Lleven agua\n\n🔥 Lista y equipos en la web 👇\n${evLink(ev.id)}\n¡Nos vemos en la cancha! 🏐❄️🔥`;
+  };
+
   const payYape = (ev) => {
     const msg = `Hola ${YAPE_NAME} 👋💜\nSoy ${me.nickname} (${me.name}). Ya yapeé *S/ ${ev.fee}* 💸 por la pichanga "${ev.title}" 🏐 del ${fmtDay(ev)}.\n¿Me confirmas el pago? 🙏\n\n🔗 Ver pichanga: ${evLink(ev.id)}`;
-    window.open('https://wa.me/' + YAPE_WA + '?text=' + encodeURIComponent(msg), '_blank');
+    waOpen(YAPE_WA, msg);
     if (pays_of(ev)[me.id] !== 'pending') setPaid(ev, me.id, 'pending');
   };
   const pays_of = (ev) => ev.paid || {};
@@ -1357,6 +1425,12 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
                     <span>{fireIce(i)}</span>
                     {p && <Av p={p} size="w-6 h-6" text="text-sm" />}
                     <b className="truncate">{p ? p.nickname : isGuest(id) ? guestName(id) + ' (inv.)' : 'Jugador'}</b>
+                    {isGuest(id) && (isAdmin
+                      ? <select value={guestPosOf(ev, id)} onClick={(e) => e.stopPropagation()} onChange={(e) => setGuestPos(ev, id, e.target.value)} className="text-[10px] bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-slate-200">
+                          <option value="">¿Pos?</option>
+                          {POS.map((pos) => <option key={pos.id} value={pos.id}>{pos.s}</option>)}
+                        </select>
+                      : guestPosOf(ev, id) && <Badge id={guestPosOf(ev, id)} />)}
                     {ev.fee > 0 && <span className="ml-auto text-xs">{st === 'ok' ? '✅' : st === 'pending' ? '⏳' : ''}</span>}
                     {isAdmin && isGuest(id) && <button onClick={(e) => { e.stopPropagation(); removeGuest(ev, id); }} className="ml-1 text-rose-400 text-xs font-bold">✕</button>}
                   </div>
@@ -1427,10 +1501,17 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
           {!past && isAdmin && (
             <div className="p-2.5 rounded-xl bg-slate-900/80 border border-amber-500/30">
               <label className="block text-[11px] font-bold text-amber-400 mb-1.5">➕ Anotar jugador sin cuenta (invitado)</label>
-              <div className="flex gap-2">
-                <input id={'guest-' + ev.id} type="text" maxLength={30} placeholder="Nombre o apodo..." className={inp + ' !py-1.5 text-xs'}
-                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addGuest(ev, e.currentTarget.value); e.currentTarget.value = ''; } }} />
-                <button type="button" onClick={() => { const el = document.getElementById('guest-' + ev.id); if (el && el.value) { addGuest(ev, el.value); el.value = ''; } }} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition">Anotar</button>
+              <div className="flex gap-2 flex-wrap">
+                <input id={'guest-' + ev.id} type="text" maxLength={30} placeholder="Nombre o apodo..." className={inp + ' !py-1.5 text-xs flex-1 min-w-[120px]'}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); document.getElementById('guestbtn-' + ev.id)?.click(); } }} />
+                <select id={'guestpos-' + ev.id} defaultValue="" className={inp + ' !py-1.5 text-xs !w-auto'}>
+                  <option value="">Posición...</option>
+                  {POS.map((pos) => <option key={pos.id} value={pos.id}>{pos.label}</option>)}
+                </select>
+                <button id={'guestbtn-' + ev.id} type="button" onClick={async () => {
+                  const el = document.getElementById('guest-' + ev.id), sp = document.getElementById('guestpos-' + ev.id);
+                  if (el && el.value && await addGuest(ev, el.value, sp && sp.value)) { el.value = ''; if (sp) sp.value = ''; }
+                }} className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-lg transition">Anotar</button>
               </div>
             </div>
           )}
@@ -1460,6 +1541,7 @@ function Events({ me, events, players, isAdmin, focusId, onTeams, onProfile }) {
               <button onClick={() => editFee(ev)} className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 text-xs font-bold transition">💰 Cambiar cuota (ahora: {ev.fee > 0 ? 'S/ ' + ev.fee : 'gratis'})</button>
               <div className="grid gap-1.5">
                 <button onClick={() => waShare(evOpen(ev))} className="py-2 rounded-xl bg-emerald-600/15 border border-emerald-500/40 text-emerald-300 text-xs font-bold hover:bg-emerald-600/25 transition">🔥 Ya está abierta la lista, anótense</button>
+                <button onClick={() => { const note = prompt('Nota extra para el grupo (opcional). Déjalo vacío si no hay:', ''); if (note === null) return; waShare(evToday(ev, note.trim().slice(0, 200))); }} className="py-2 rounded-xl bg-rose-500/15 border border-rose-500/40 text-rose-300 text-xs font-bold hover:bg-rose-500/25 transition">🏐 Así será el juego de hoy</button>
                 <button onClick={() => waShare(evList(ev))} className="py-2 rounded-xl bg-orange-500/15 border border-orange-500/40 text-orange-300 text-xs font-bold hover:bg-orange-500/25 transition">📋 Enviar la lista (1 a {ev.cap})</button>
                 <button onClick={() => waShare(evSpots(ev))} className="py-2 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 text-xs font-bold hover:bg-amber-500/25 transition">⚠️ Cupos limitados ({Math.max(0, ev.cap - g.length)} libres)</button>
                 {ev.fee > 0 && (
@@ -2442,7 +2524,9 @@ function VerifyBanner({ user }) {
 
 // ===== COMPONENTE PRINCIPAL CON NAVEGACIÓN Y ROLES =====
 function Main({ user }) {
-  const players = useCol('players');
+  const playersRaw = useCol('players');
+  // Antes existía "Líbero": ahora todos son "Defensa"
+  const players = useMemo(() => (playersRaw ? playersRaw.map((p) => (p.position === 'libero' ? { ...p, position: 'defensa' } : p)) : playersRaw), [playersRaw]);
   const posts = useCol('posts', (c) => c.orderBy('createdAt', 'desc').limit(150));
   const events = useCol('events');
   const trisCol = useCol('triangulars', (c) => c.orderBy('createdAt', 'desc').limit(1));
